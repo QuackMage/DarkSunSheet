@@ -1,0 +1,115 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Dark Sun Sheet</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <!-- Thin GM bar: shows all player sheets as tabs (only for GMs) -->
+  <div id="gm-bar" class="gm-bar" hidden>
+    <div id="gm-tabs" class="tabs"></div>
+    <div class="spacer"></div>
+    <button id="gm-refresh" class="ghost">Refresh</button>
+  </div>
+
+  <!-- Player header: local tabs + New/Import when empty -->
+  <div id="player-bar" class="player-bar">
+    <div id="player-tabs" class="tabs"></div>
+    <div class="spacer"></div>
+    <button id="btn-new" class="primary">New Character</button>
+    <button id="btn-import" class="ghost">Import</button>
+    <input id="import-file" type="file" accept="application/json" hidden />
+  </div>
+
+  <!-- Sheet -->
+  <form id="sheet" class="sheet" autocomplete="off">
+    <div class="row head">
+      <input class="text" data-key="name" placeholder="Name" />
+      <input class="text" data-key="race" placeholder="Race" />
+      <input class="text" data-key="class" placeholder="Class" />
+      <div class="num-wrap"><label>Lvl</label><input class="num" data-key="level" inputmode="numeric" /></div>
+      <div class="num-wrap sp"><label>SP</label><input class="text" data-key="sp" placeholder="0 / 0" /></div>
+      <div class="spacer"></div>
+      <button id="btn-save" type="button" class="ghost">Save</button>
+      <button id="btn-export" type="button" class="ghost">Export</button>
+    </div>
+
+    <!-- Ability column -->
+    <div class="col abilities">
+      <!-- Each ability: score, modifier (±), checkbox under mod -->
+      <div class="abl" data-ability="str">
+        <label>STR</label>
+        <input class="num big" data-key="str" inputmode="numeric" />
+        <input class="num mod" data-key="str_mod" inputmode="numeric" />
+        <label class="chk"><input type="checkbox" data-key="str_chk" /></label>
+      </div>
+      <div class="abl" data-ability="dex">
+        <label>DEX</label>
+        <input class="num big" data-key="dex" inputmode="numeric" />
+        <input class="num mod" data-key="dex_mod" inputmode="numeric" />
+        <label class="chk"><input type="checkbox" data-key="dex_chk" /></label>
+      </div>
+      <div class="abl" data-ability="con">
+        <label>CON</label>
+        <input class="num big" data-key="con" inputmode="numeric" />
+        <input class="num mod" data-key="con_mod" inputmode="numeric" />
+        <label class="chk"><input type="checkbox" data-key="con_chk" /></label>
+      </div>
+      <div class="abl" data-ability="int">
+        <label>INT</label>
+        <input class="num big" data-key="int" inputmode="numeric" />
+        <input class="num mod" data-key="int_mod" inputmode="numeric" />
+        <label class="chk"><input type="checkbox" data-key="int_chk" /></label>
+      </div>
+      <div class="abl" data-ability="wis">
+        <label>WIS</label>
+        <input class="num big" data-key="wis" inputmode="numeric" />
+        <input class="num mod" data-key="wis_mod" inputmode="numeric" />
+        <label class="chk"><input type="checkbox" data-key="wis_chk" /></label>
+      </div>
+      <div class="abl" data-ability="cha">
+        <label>CHA</label>
+        <input class="num big" data-key="cha" inputmode="numeric" />
+        <input class="num mod" data-key="cha_mod" inputmode="numeric" />
+        <label class="chk"><input type="checkbox" data-key="cha_chk" /></label>
+      </div>
+    </div>
+
+    <!-- Combat + Saves -->
+    <div class="col combat">
+      <div class="grid">
+        <div class="cell"><label>Max HP</label><input class="num" data-key="hp_max" /></div>
+        <div class="cell"><label>HP</label><input class="num" data-key="hp_cur" /></div>
+        <div class="cell"><label>AC</label><input class="num" data-key="ac" /></div>
+        <div class="cell"><label>Speed</label><input class="num" data-key="speed" /></div>
+        <div class="cell"><label>Init</label><input class="num" data-key="init" /></div>
+        <div class="cell"><label>Psionic</label><input class="num" data-key="psionic" /></div>
+      </div>
+      <div class="saves">
+        <div><label>Fort</label><input class="num" data-key="save_fort" /></div>
+        <div><label>Ref</label><input class="num" data-key="save_ref" /></div>
+        <div><label>Will</label><input class="num" data-key="save_will" /></div>
+        <div><label>Death</label><input class="num" data-key="save_death" /></div>
+      </div>
+    </div>
+
+    <!-- Three columns of text areas, no scroll overall -->
+    <div class="col tall">
+      <label>Attacks & Spells</label>
+      <textarea data-key="attacks"></textarea>
+    </div>
+    <div class="col tall">
+      <label>Inventory</label>
+      <textarea data-key="inventory"></textarea>
+    </div>
+    <div class="col tall">
+      <label>Traits & Notes</label>
+      <textarea data-key="notes"></textarea>
+    </div>
+  </form>
+
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
