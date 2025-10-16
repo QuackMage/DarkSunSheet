@@ -1,0 +1,14 @@
+{
+  "name": "Dark Sun Sheet",
+  "version": "0.1.0",
+  "author": "You",
+  "homepage": "https://your-domain.tld/dark-sun-sheet/",
+  "action": {
+    "title": "Dark Sun Sheet",
+    "icon": "/icon.png",
+    "popover": "https://rawcdn.githack.com/QuackMage/DarkSunSheet/8146ec86753e470b85fc5332ccfcfedd1052c6bd/index.html",
+    "width": 900,
+    "height": 540
+  },
+  "background_url": null
+}
