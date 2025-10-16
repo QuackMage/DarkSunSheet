@@ -1,39 +1,57 @@
-// No bundler? Import the SDK as ESM from a CDN:
-import OBR from "https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk/+esm";
+// ========== Utilities ==========
+const $ = (s) => document.querySelector(s);
+const log = (...a) => console.log("[DarkSunSheet]", ...a);
 
-/**
- * Minimal data model
- * - Full sheet data lives in localStorage (private to the player)
- * - A tiny shared index (id -> {name, ownerId}) lives in Room.metadata under our namespace
- *   so the GM can list all sheets without seeing contents.
- */
+// Try both global OBR and ESM import as fallback
+let OBRref = typeof window !== "undefined" ? window.OBR : undefined;
+async function ensureOBR() {
+  if (OBRref) return;
+  try {
+    const mod = await import("https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk/+esm");
+    OBRref = mod?.default || mod;
+    log("OBR imported via ESM");
+  } catch (e) {
+    log("ESM import failed; using global OBR if present.", e);
+  }
+}
+
+const toast = async (msg) => {
+  try { await OBRref.notification.show(msg); } catch { console.log(msg); }
+};
+const uuid = () => (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
+
+// ========== DOM refs ==========
+const btns = {
+  new: $("#btn-new"),
+  import: $("#btn-import"),
+  save: $("#btn-save"),
+  export: $("#btn-export"),
+  refresh: $("#gm-refresh"),
+  file: /** @type {HTMLInputElement} */ ($("#import-file")),
+  tabsPlayer: $("#player-tabs"),
+  tabsGM: $("#gm-tabs"),
+  gmBar: $("#gm-bar"),
+  playerBar: $("#player-bar"),
+};
+const form = /** @type {HTMLFormElement} */ ($("#sheet"));
+
+// ========== Data model ==========
 const NS = "com.quackmage.darksun";
-const ROOM_KEY = `${NS}:index`;
-const LOCAL_KEY = `${NS}:sheets`; // map<sheetId, sheetObject>
+const LOCAL = `${NS}:sheets`;          // player-private: { [sheetId]: sheetData }
+const ROOM_KEY = `${NS}:index`;        // tiny shared index: { [sheetId]: {name, ownerId, ownerName} }
 
-// Helpers
-const $ = (sel) => /** @type {HTMLElement} */ (document.querySelector(sel));
-const uuid = () => crypto.randomUUID();
-const readLocal = () => JSON.parse(localStorage.getItem(LOCAL_KEY) || "{}");
-const writeLocal = (obj) => localStorage.setItem(LOCAL_KEY, JSON.stringify(obj));
-const notify = async (msg) => {
-  try { await OBR.notification.show(msg); } catch { /* non-OBR context */ alert(msg); }
+// Broadcast channels (ephemeral sync)
+const CH = {
+  REQ: `${NS}:req-sheet`,
+  PUSH: `${NS}:push-sheet`,
+  SAVED: `${NS}:saved-sheet`, // optional ping on save
 };
 
-// UI refs
-const btnNew = $("#btn-new");
-const btnImport = $("#btn-import");
-const fileImport = /** @type {HTMLInputElement} */ ($("#import-file"));
-const btnSave = $("#btn-save");
-const btnExport = $("#btn-export");
-const btnRefresh = $("#gm-refresh");
-const playerTabs = $("#player-tabs");
-const gmTabs = $("#gm-tabs");
-const gmBar = $("#gm-bar");
-const playerBar = $("#player-bar");
+// Which sheet the GM is currently viewing (not editing)
+let gmViewing = /** @type {null | {sheetId:string, ownerId:string}} */ (null);
 
-// Sheet fields map (data-key attributes in your HTML)
-const FIELD_KEYS = [
+// Field list matches data-key in index.html
+const FIELDS = [
   "name","race","class","level","sp",
   "str","str_mod","dex","dex_mod","con","con_mod","int","int_mod","wis","wis_mod","cha","cha_mod",
   "hp_max","hp_cur","ac","speed","init","psionic",
@@ -42,172 +60,230 @@ const FIELD_KEYS = [
   "str_chk","dex_chk","con_chk","int_chk","wis_chk","cha_chk"
 ];
 
-const readSheetFromDOM = () => {
-  const out = {};
-  for (const k of FIELD_KEYS) {
-    const el = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (document.querySelector(`[data-key="${k}"]`));
+function getSheetFromDOM() {
+  const o = {};
+  for (const k of FIELDS) {
+    const el = document.querySelector(`[data-key="${k}"]`);
     if (!el) continue;
-    if (el instanceof HTMLInputElement && el.type === "checkbox") out[k] = el.checked;
-    else out[k] = el.value;
+    if (el instanceof HTMLInputElement && el.type === "checkbox") o[k] = el.checked;
+    else o[k] = /** @type {HTMLInputElement|HTMLTextAreaElement} */(el).value ?? "";
   }
-  return out;
-};
-
-const writeSheetToDOM = (data = {}) => {
-  for (const k of FIELD_KEYS) {
-    const el = /** @type {HTMLInputElement|HTMLTextAreaElement} */ (document.querySelector(`[data-key="${k}"]`));
+  return o;
+}
+function setSheetToDOM(data = {}) {
+  for (const k of FIELDS) {
+    const el = document.querySelector(`[data-key="${k}"]`);
     if (!el) continue;
     if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = !!data[k];
-    else el.value = data[k] ?? "";
+    else /** @type {HTMLInputElement|HTMLTextAreaElement} */(el).value = data[k] ?? "";
   }
-};
+}
+function setFormDisabled(disabled) {
+  Array.from(form.elements).forEach(el => {
+    if (el instanceof HTMLButtonElement) return; // keep buttons clickable
+    el.disabled = !!disabled;
+  });
+}
 
-const renderTabs = async () => {
-  const role = await OBR.player.getRole(); // "GM" | "PLAYER"  :contentReference[oaicite:2]{index=2}
-  const me = OBR.player.id;
+// Local storage helpers
+const readLocal = () => JSON.parse(localStorage.getItem(LOCAL) || "{}");
+const writeLocal = (obj) => localStorage.setItem(LOCAL, JSON.stringify(obj));
+const lastLocalId = () => Object.keys(readLocal()).slice(-1)[0];
+
+// Room index helpers
+async function upsertRoomIndex(sheetId, metaPatch) {
+  const cur = await OBRref.room.getMetadata();
+  const idx = cur[ROOM_KEY] || {};
+  idx[sheetId] = { ...(idx[sheetId] || {}), ...metaPatch };
+  await OBRref.room.setMetadata({ [ROOM_KEY]: idx });
+}
+
+// ========== Tabs rendering ==========
+async function renderTabs() {
+  btns.tabsPlayer.innerHTML = "";
   const local = readLocal();
-  const index = (await OBR.room.getMetadata())[ROOM_KEY] || {}; // shared tiny index  :contentReference[oaicite:3]{index=3}
-
-  // Player tabs: only show my sheets
-  playerTabs.innerHTML = "";
   for (const [id, sheet] of Object.entries(local)) {
     const b = document.createElement("button");
+    b.type = "button";
     b.textContent = sheet.name || "Untitled";
     b.className = "active";
-    b.type = "button";
-    b.onclick = () => writeSheetToDOM(sheet);
-    playerTabs.appendChild(b);
+    b.onclick = () => {
+      gmViewing = null;               // back to local edit
+      setFormDisabled(false);
+      setSheetToDOM(sheet);
+    };
+    btns.tabsPlayer.appendChild(b);
   }
 
-  // GM view: show everyone’s sheet names
-  if (role === "GM") {
-    gmBar.hidden = false;
-    gmTabs.innerHTML = "";
-    for (const [id, meta] of Object.entries(index)) {
-      const b = document.createElement("button");
-      b.textContent = `${meta.name || "Untitled"} (${meta.ownerId === me ? "You" : meta.ownerName || meta.ownerId})`;
-      b.type = "button";
-      b.onclick = () => {
-        // GM can’t read contents (private), but clicking can highlight whose sheet it is
-        notify(`Sheet ${meta.name || id} belongs to ${meta.ownerName || meta.ownerId}.`);
-      };
-      gmTabs.appendChild(b);
-    }
-  } else {
-    gmBar.hidden = true;
-  }
-
-  // Player CTA buttons when no local sheets exist
-  const hasLocal = Object.keys(local).length > 0;
-  $("#btn-new").style.display = "";
-  $("#btn-import").style.display = "";
-  playerBar.style.display = ""; // keep visible for tabs
-};
-
-const upsertRoomIndex = async (sheetId, meta) => {
-  const current = await OBR.room.getMetadata();               // read current  :contentReference[oaicite:4]{index=4}
-  const index = current[ROOM_KEY] || {};
-  index[sheetId] = { ...index[sheetId], ...meta };
-  await OBR.room.setMetadata({ [ROOM_KEY]: index });          // partial update  :contentReference[oaicite:5]{index=5}
-};
-
-// Button handlers
-const handleNew = async () => {
+  // GM list: all sheets in room
   try {
-    const ownerId = OBR.player.id;
-    const ownerName = await OBR.player.getName();
-    const id = uuid();
-    const blank = { id, name: "New Character", ownerId, ownerName, createdAt: Date.now() };
-    const local = readLocal();
-    local[id] = { ...blank }; // full sheet data locally
-    writeLocal(local);
-    await upsertRoomIndex(id, { name: blank.name, ownerId, ownerName });
-    writeSheetToDOM(local[id]);
-    await notify("Created new character.");
-    renderTabs();
-  } catch (e) {
-    console.error(e); await notify("Failed to create character.");
+    const role = await OBRref.player.getRole(); // "GM" | "PLAYER"
+    btns.gmBar.hidden = role !== "GM";
+    if (role === "GM") {
+      btns.tabsGM.innerHTML = "";
+      const idx = (await OBRref.room.getMetadata())[ROOM_KEY] || {};
+      const me = await OBRref.player.getId();
+      for (const [sheetId, meta] of Object.entries(idx)) {
+        const b = document.createElement("button");
+        b.type = "button";
+        const owner = meta.ownerId === me ? "You" : (meta.ownerName || meta.ownerId);
+        b.textContent = `${meta.name || "Untitled"} (${owner})`;
+        b.onclick = async () => {
+          // Request live data from the owner
+          gmViewing = { sheetId, ownerId: meta.ownerId };
+          setSheetToDOM({});          // clear while waiting
+          setFormDisabled(true);      // GM view is read-only
+          await toast(`Requesting "${meta.name || sheetId}" from ${owner}…`);
+          await OBRref.broadcast.sendMessage(CH.REQ, { sheetId, ownerId: meta.ownerId });
+        };
+        btns.tabsGM.appendChild(b);
+      }
+    }
+  } catch {
+    /* not in OBR context; ignore */
   }
-};
+}
 
-const handleSave = async () => {
+// ========== Button handlers ==========
+async function onNew() {
+  const id = uuid();
+  const ownerId = OBRref?.player ? await OBRref.player.getId() : "local";
+  const ownerName = OBRref?.player ? await OBRref.player.getName() : "Local Player";
+
   const local = readLocal();
-  // Save into the currently visible sheet if we can infer it; fallback to last created
-  const ids = Object.keys(local);
-  if (ids.length === 0) return notify("No local character to save.");
-  const activeId = ids[ids.length - 1];
-  local[activeId] = { ...local[activeId], ...readSheetFromDOM() };
+  local[id] = { id, name: "New Character", ownerId, ownerName, createdAt: Date.now(), ...getSheetFromDOM() };
   writeLocal(local);
-  // keep the shared index name updated
-  await upsertRoomIndex(activeId, { name: local[activeId].name });
-  await notify("Saved.");
-  renderTabs();
-};
+  setSheetToDOM(local[id]);
 
-const handleExport = async () => {
+  try { await upsertRoomIndex(id, { name: local[id].name, ownerId, ownerName }); } catch {}
+  await toast("New character created.");
+  renderTabs();
+}
+
+async function onSave(pushToGM = true) {
   const local = readLocal();
-  const ids = Object.keys(local);
-  if (!ids.length) return notify("Nothing to export.");
-  const activeId = ids[ids.length - 1];
-  const data = JSON.stringify(local[activeId], null, 2);
-  const blob = new Blob([data], { type: "application/json" });
+  const id = lastLocalId();
+  if (!id) return toast("No local character to save.");
+  local[id] = { ...local[id], ...getSheetFromDOM() };
+  writeLocal(local);
+
+  try { await upsertRoomIndex(id, { name: local[id].name }); } catch {}
+  await toast("Saved.");
+
+  // If a GM is currently viewing this sheet, push the fresh data
+  try {
+    if (pushToGM && OBRref?.broadcast) {
+      await OBRref.broadcast.sendMessage(CH.SAVED, { sheetId: id, ownerId: local[id].ownerId, data: local[id] });
+    }
+  } catch {}
+
+  renderTabs();
+}
+
+async function onExport() {
+  const local = readLocal();
+  const id = lastLocalId();
+  if (!id) return toast("Nothing to export.");
+  const blob = new Blob([JSON.stringify(local[id], null, 2)], { type: "application/json" });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = (local[activeId].name || "character") + ".json";
+  a.download = (local[id].name || "character") + ".json";
   a.click();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-};
+  setTimeout(() => URL.revokeObjectURL(a.href), 800);
+}
 
-const handleImport = async () => {
-  fileImport.onchange = async () => {
-    const f = fileImport.files?.[0];
+async function onImport() {
+  btns.file.onchange = async () => {
+    const f = btns.file.files?.[0];
     if (!f) return;
     try {
-      const text = await f.text();
-      const obj = JSON.parse(text);
+      const obj = JSON.parse(await f.text());
       const id = obj.id || uuid();
-      const ownerId = OBR.player.id;
-      const ownerName = await OBR.player.getName();
+      const ownerId = OBRref?.player ? await OBRref.player.getId() : "local";
+      const ownerName = OBRref?.player ? await OBRref.player.getName() : "Local Player";
+
       const local = readLocal();
-      local[id] = { ...obj, id, ownerId, ownerName };
+      local[id] = { id, ownerId, ownerName, ...obj };
       writeLocal(local);
-      await upsertRoomIndex(id, { name: local[id].name, ownerId, ownerName });
-      writeSheetToDOM(local[id]);
-      await notify("Imported character.");
+      setSheetToDOM(local[id]);
+      try { await upsertRoomIndex(id, { name: local[id].name, ownerId, ownerName }); } catch {}
+      await toast("Imported.");
       renderTabs();
     } catch (e) {
-      console.error(e); await notify("Import failed (bad JSON?).");
-    } finally {
-      fileImport.value = "";
-    }
+      console.error(e); toast("Import failed (bad JSON?).");
+    } finally { btns.file.value = ""; }
   };
-  fileImport.click();
-};
+  btns.file.click();
+}
 
-const handleRefresh = async () => {
-  try {
-    await notify("Refreshing…");
+async function onRefresh() { await toast("Refreshed."); renderTabs(); }
+
+// ========== Broadcast wiring (GM <-> Player) ==========
+function wireBroadcast() {
+  if (!OBRref?.broadcast) return;
+
+  // GM requests: only the owner responds with full data
+  OBRref.broadcast.onMessage(CH.REQ, async (msg) => {
+    const { sheetId, ownerId } = msg.data || {};
+    try {
+      const myId = await OBRref.player.getId();
+      if (!sheetId || ownerId !== myId) return; // not mine
+      const local = readLocal();
+      const data = local[sheetId];
+      if (!data) return;
+
+      await OBRref.broadcast.sendMessage(CH.PUSH, { sheetId, ownerId: myId, data });
+    } catch {}
+  });
+
+  // GM receives a pushed sheet: show it read-only if it matches the one they’re viewing
+  OBRref.broadcast.onMessage(CH.PUSH, async (msg) => {
+    const { sheetId, ownerId, data } = msg.data || {};
+    if (!gmViewing) return;
+    if (gmViewing.sheetId === sheetId && gmViewing.ownerId === ownerId) {
+      setSheetToDOM(data || {});
+      setFormDisabled(true);
+      await toast(`Viewing live sheet from ${ownerId}.`);
+    }
+  });
+
+  // When a player saves, they can ping any listening GM to refresh if they’re viewing that sheet
+  OBRref.broadcast.onMessage(CH.SAVED, async (msg) => {
+    const { sheetId, ownerId, data } = msg.data || {};
+    if (!gmViewing) return;
+    if (gmViewing.sheetId === sheetId && gmViewing.ownerId === ownerId) {
+      setSheetToDOM(data || {});
+      setFormDisabled(true);
+      await toast("GM view updated (player saved).");
+    }
+  });
+}
+
+// ========== Boot ==========
+(async function boot() {
+  await ensureOBR();
+
+  // Attach button handlers (work even if OBR is unavailable)
+  btns.new?.addEventListener("click", onNew);
+  btns.save?.addEventListener("click", () => onSave(true));
+  btns.export?.addEventListener("click", onExport);
+  btns.import?.addEventListener("click", onImport);
+  btns.refresh?.addEventListener("click", onRefresh);
+
+  if (OBRref?.onReady) {
+    OBRref.onReady(async () => {
+      log("OBR ready");
+      wireBroadcast();
+      try {
+        OBRref.room.onMetadataChange(renderTabs);
+        OBRref.player.onChange(renderTabs);
+      } catch {}
+      renderTabs();
+    });
+  } else {
+    log("OBR not detected; running in standalone mode.");
     renderTabs();
-  } catch (e) {
-    console.error(e);
   }
-};
 
-// Wire up once the SDK is ready
-OBR.onReady(async () => {                                      // onReady is a callback, not a Promise  :contentReference[oaicite:6]{index=6}
-  // Basic visibility: show player bar always; GM bar toggled in renderTabs()
-  playerBar.style.display = "";
-
-  // Attach handlers
-  btnNew?.addEventListener("click", handleNew);
-  btnSave?.addEventListener("click", handleSave);
-  btnExport?.addEventListener("click", handleExport);
-  btnImport?.addEventListener("click", handleImport);
-  btnRefresh?.addEventListener("click", handleRefresh);
-
-  // Re-render tabs if player/room state changes
-  OBR.player.onChange(renderTabs);                             // reactive to role/name changes  :contentReference[oaicite:7]{index=7}
-  OBR.room.onMetadataChange(renderTabs);                       // keep GM list in sync         :contentReference[oaicite:8]{index=8}
-
-  renderTabs();
-});
+  log("bootstrap complete");
+})();
