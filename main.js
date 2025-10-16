@@ -15,7 +15,7 @@ async function ensureOBR() {
   }
 }
 
-// One-time readiness latch (resolve only after OBR.onReady fires)
+// One-time readiness latch
 let _readyResolve;
 const _ready = new Promise((res) => (_readyResolve = res));
 async function ready() { await _ready; }
@@ -48,20 +48,20 @@ const setButtonsDisabled = (disabled) => {
 
 // ========== Data model ==========
 const NS = "com.quackmage.darksun";
-const LOCAL = `${NS}:sheets`;          // player-private: { [sheetId]: sheetData }
-const ROOM_KEY = `${NS}:index`;        // tiny shared index: { [sheetId]: {name, ownerId, ownerName} }
+const LOCAL = `${NS}:sheets`;          // player-private
+const ROOM_KEY = `${NS}:index`;        // tiny shared index
 
-// Broadcast channels (ephemeral sync)
+// Broadcast channels
 const CH = {
   REQ: `${NS}:req-sheet`,
   PUSH: `${NS}:push-sheet`,
-  SAVED: `${NS}:saved-sheet`, // optional ping on save
+  SAVED: `${NS}:saved-sheet`,
 };
 
 // Which sheet the GM is currently viewing (not editing)
 let gmViewing = /** @type {null | {sheetId:string, ownerId:string}} */ (null);
 
-// Field list matches data-key in index.html
+// Field list
 const FIELDS = [
   "name","race","class","level","sp",
   "str","str_mod","dex","dex_mod","con","con_mod","int","int_mod","wis","wis_mod","cha","cha_mod",
@@ -91,7 +91,7 @@ function setSheetToDOM(data = {}) {
 }
 function setFormDisabled(disabled) {
   Array.from(form.elements).forEach(el => {
-    if (el instanceof HTMLButtonElement) return; // keep buttons clickable
+    if (el instanceof HTMLButtonElement) return; // keep top buttons active
     el.disabled = !!disabled;
   });
 }
@@ -112,7 +112,7 @@ async function upsertRoomIndex(sheetId, metaPatch) {
 
 // ========== Tabs rendering ==========
 async function renderTabs() {
-  // Player tabs: local only (no OBR needed)
+  // Player tabs: local
   btns.tabsPlayer.innerHTML = "";
   const local = readLocal();
   for (const [id, sheet] of Object.entries(local)) {
@@ -121,14 +121,14 @@ async function renderTabs() {
     b.textContent = sheet.name || "Untitled";
     b.className = "active";
     b.onclick = () => {
-      gmViewing = null;               // back to local edit
+      gmViewing = null;
       setFormDisabled(false);
       setSheetToDOM(sheet);
     };
     btns.tabsPlayer.appendChild(b);
   }
 
-  // GM list: requires OBR (wait for ready, then try)
+  // GM list: requires OBR
   try {
     await ready();
     const role = await OBRref.player.getRole(); // "GM" | "PLAYER"
@@ -144,10 +144,9 @@ async function renderTabs() {
         b.textContent = `${meta.name || "Untitled"} (${owner})`;
         b.onclick = async () => {
           await ready();
-          // Request live data from the owner
           gmViewing = { sheetId, ownerId: meta.ownerId };
-          setSheetToDOM({});          // clear while waiting
-          setFormDisabled(true);      // GM view is read-only
+          setSheetToDOM({});
+          setFormDisabled(true); // GM view is read-only
           await toast(`Requesting "${meta.name || sheetId}" from ${owner}…`);
           await OBRref.broadcast.sendMessage(CH.REQ, { sheetId, ownerId: meta.ownerId });
         };
@@ -155,17 +154,17 @@ async function renderTabs() {
       }
     }
   } catch {
-    /* not in OBR context yet; GM bar stays hidden */
+    /* not in OBR context yet */
   }
 }
 
 // ========== Button handlers ==========
 async function onNew() {
-  // local parts first (don’t need OBR)
+  // local first
   const id = uuid();
   const local = readLocal();
 
-  // if OBR ready, get real owner metadata
+  // try to fetch real owner (if ready)
   let ownerId = "local";
   let ownerName = "Local Player";
   try {
@@ -270,7 +269,7 @@ function wireBroadcast() {
     } catch {}
   });
 
-  // GM receives a pushed sheet: show it read-only if it matches the one they’re viewing
+  // GM receives a pushed sheet
   OBRref.broadcast.onMessage(CH.PUSH, async (msg) => {
     try {
       await ready();
@@ -284,7 +283,7 @@ function wireBroadcast() {
     } catch {}
   });
 
-  // When a player saves, they can ping any listening GM to refresh if they’re viewing that sheet
+  // Player saved; update GM view if it matches
   OBRref.broadcast.onMessage(CH.SAVED, async (msg) => {
     try {
       await ready();
@@ -302,20 +301,27 @@ function wireBroadcast() {
 // ========== Boot ==========
 (async function boot() {
   await ensureOBR();
-  setButtonsDisabled(true); // prevent early clicks
+  setButtonsDisabled(true); // disable briefly during init
 
-  // Attach button handlers immediately (local features work even outside OBR)
+  // Attach handlers immediately
   btns.new?.addEventListener("click", onNew);
   btns.save?.addEventListener("click", () => onSave(true));
   btns.export?.addEventListener("click", onExport);
   btns.import?.addEventListener("click", onImport);
   btns.refresh?.addEventListener("click", onRefresh);
 
+  // Fallback: if onReady is slow/missed, re-enable UI after 2s anyway
+  const enableFallback = setTimeout(() => {
+    setButtonsDisabled(false);
+    log("Enabled UI via fallback");
+  }, 2000);
+
   if (OBRref?.onReady) {
     OBRref.onReady(async () => {
       log("OBR ready");
-      _readyResolve();           // flip the readiness latch
-      setButtonsDisabled(false); // enable UI now that bus is ready
+      clearTimeout(enableFallback);
+      _readyResolve();           // flip readiness latch for OBR calls
+      setButtonsDisabled(false); // enable UI for all roles
       wireBroadcast();
       try {
         OBRref.room.onMetadataChange(renderTabs);
@@ -325,7 +331,8 @@ function wireBroadcast() {
     });
   } else {
     // Standalone preview (not inside Owlbear)
-    _readyResolve();            // allow code paths that await ready()
+    clearTimeout(enableFallback);
+    _readyResolve();
     setButtonsDisabled(false);
     renderTabs();
   }
