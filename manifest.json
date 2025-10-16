@@ -1,8 +1,8 @@
 {
   "name": "Dark Sun Sheet",
   "version": "0.1.0",
+  "manifest_version": 1,
   "author": "You",
-  "homepage": "https://your-domain.tld/dark-sun-sheet/",
   "action": {
     "title": "Dark Sun Sheet",
     "icon": "/icon.png",
