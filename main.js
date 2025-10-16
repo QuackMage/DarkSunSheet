@@ -15,6 +15,11 @@ async function ensureOBR() {
   }
 }
 
+// One-time readiness latch (resolve only after OBR.onReady fires)
+let _readyResolve;
+const _ready = new Promise((res) => (_readyResolve = res));
+async function ready() { await _ready; }
+
 const toast = async (msg) => {
   try { await OBRref.notification.show(msg); } catch { console.log(msg); }
 };
@@ -34,6 +39,12 @@ const btns = {
   playerBar: $("#player-bar"),
 };
 const form = /** @type {HTMLFormElement} */ ($("#sheet"));
+
+// quick enable/disable for top buttons
+const setButtonsDisabled = (disabled) => {
+  [btns.new, btns.import, btns.save, btns.export, btns.refresh]
+    .forEach(b => { if (b) b.disabled = !!disabled; });
+};
 
 // ========== Data model ==========
 const NS = "com.quackmage.darksun";
@@ -92,6 +103,7 @@ const lastLocalId = () => Object.keys(readLocal()).slice(-1)[0];
 
 // Room index helpers
 async function upsertRoomIndex(sheetId, metaPatch) {
+  await ready();
   const cur = await OBRref.room.getMetadata();
   const idx = cur[ROOM_KEY] || {};
   idx[sheetId] = { ...(idx[sheetId] || {}), ...metaPatch };
@@ -100,6 +112,7 @@ async function upsertRoomIndex(sheetId, metaPatch) {
 
 // ========== Tabs rendering ==========
 async function renderTabs() {
+  // Player tabs: local only (no OBR needed)
   btns.tabsPlayer.innerHTML = "";
   const local = readLocal();
   for (const [id, sheet] of Object.entries(local)) {
@@ -115,8 +128,9 @@ async function renderTabs() {
     btns.tabsPlayer.appendChild(b);
   }
 
-  // GM list: all sheets in room
+  // GM list: requires OBR (wait for ready, then try)
   try {
+    await ready();
     const role = await OBRref.player.getRole(); // "GM" | "PLAYER"
     btns.gmBar.hidden = role !== "GM";
     if (role === "GM") {
@@ -129,6 +143,7 @@ async function renderTabs() {
         const owner = meta.ownerId === me ? "You" : (meta.ownerName || meta.ownerId);
         b.textContent = `${meta.name || "Untitled"} (${owner})`;
         b.onclick = async () => {
+          await ready();
           // Request live data from the owner
           gmViewing = { sheetId, ownerId: meta.ownerId };
           setSheetToDOM({});          // clear while waiting
@@ -140,17 +155,25 @@ async function renderTabs() {
       }
     }
   } catch {
-    /* not in OBR context; ignore */
+    /* not in OBR context yet; GM bar stays hidden */
   }
 }
 
 // ========== Button handlers ==========
 async function onNew() {
+  // local parts first (don’t need OBR)
   const id = uuid();
-  const ownerId = OBRref?.player ? await OBRref.player.getId() : "local";
-  const ownerName = OBRref?.player ? await OBRref.player.getName() : "Local Player";
-
   const local = readLocal();
+
+  // if OBR ready, get real owner metadata
+  let ownerId = "local";
+  let ownerName = "Local Player";
+  try {
+    await ready();
+    ownerId = await OBRref.player.getId();
+    ownerName = await OBRref.player.getName();
+  } catch {}
+
   local[id] = { id, name: "New Character", ownerId, ownerName, createdAt: Date.now(), ...getSheetFromDOM() };
   writeLocal(local);
   setSheetToDOM(local[id]);
@@ -164,19 +187,19 @@ async function onSave(pushToGM = true) {
   const local = readLocal();
   const id = lastLocalId();
   if (!id) return toast("No local character to save.");
+
   local[id] = { ...local[id], ...getSheetFromDOM() };
   writeLocal(local);
 
-  try { await upsertRoomIndex(id, { name: local[id].name }); } catch {}
-  await toast("Saved.");
-
-  // If a GM is currently viewing this sheet, push the fresh data
   try {
+    await ready();
+    await upsertRoomIndex(id, { name: local[id].name });
     if (pushToGM && OBRref?.broadcast) {
       await OBRref.broadcast.sendMessage(CH.SAVED, { sheetId: id, ownerId: local[id].ownerId, data: local[id] });
     }
   } catch {}
 
+  await toast("Saved.");
   renderTabs();
 }
 
@@ -199,8 +222,15 @@ async function onImport() {
     try {
       const obj = JSON.parse(await f.text());
       const id = obj.id || uuid();
-      const ownerId = OBRref?.player ? await OBRref.player.getId() : "local";
-      const ownerName = OBRref?.player ? await OBRref.player.getName() : "Local Player";
+
+      // default owner
+      let ownerId = "local";
+      let ownerName = "Local Player";
+      try {
+        await ready();
+        ownerId = await OBRref.player.getId();
+        ownerName = await OBRref.player.getName();
+      } catch {}
 
       const local = readLocal();
       local[id] = { id, ownerId, ownerName, ...obj };
@@ -216,7 +246,11 @@ async function onImport() {
   btns.file.click();
 }
 
-async function onRefresh() { await toast("Refreshed."); renderTabs(); }
+async function onRefresh() {
+  try { await ready(); } catch {}
+  await toast("Refreshed.");
+  renderTabs();
+}
 
 // ========== Broadcast wiring (GM <-> Player) ==========
 function wireBroadcast() {
@@ -224,46 +258,53 @@ function wireBroadcast() {
 
   // GM requests: only the owner responds with full data
   OBRref.broadcast.onMessage(CH.REQ, async (msg) => {
-    const { sheetId, ownerId } = msg.data || {};
     try {
+      await ready();
+      const { sheetId, ownerId } = msg.data || {};
       const myId = await OBRref.player.getId();
       if (!sheetId || ownerId !== myId) return; // not mine
       const local = readLocal();
       const data = local[sheetId];
       if (!data) return;
-
       await OBRref.broadcast.sendMessage(CH.PUSH, { sheetId, ownerId: myId, data });
     } catch {}
   });
 
   // GM receives a pushed sheet: show it read-only if it matches the one they’re viewing
   OBRref.broadcast.onMessage(CH.PUSH, async (msg) => {
-    const { sheetId, ownerId, data } = msg.data || {};
-    if (!gmViewing) return;
-    if (gmViewing.sheetId === sheetId && gmViewing.ownerId === ownerId) {
-      setSheetToDOM(data || {});
-      setFormDisabled(true);
-      await toast(`Viewing live sheet from ${ownerId}.`);
-    }
+    try {
+      await ready();
+      const { sheetId, ownerId, data } = msg.data || {};
+      if (!gmViewing) return;
+      if (gmViewing.sheetId === sheetId && gmViewing.ownerId === ownerId) {
+        setSheetToDOM(data || {});
+        setFormDisabled(true);
+        await toast(`Viewing live sheet from ${ownerId}.`);
+      }
+    } catch {}
   });
 
   // When a player saves, they can ping any listening GM to refresh if they’re viewing that sheet
   OBRref.broadcast.onMessage(CH.SAVED, async (msg) => {
-    const { sheetId, ownerId, data } = msg.data || {};
-    if (!gmViewing) return;
-    if (gmViewing.sheetId === sheetId && gmViewing.ownerId === ownerId) {
-      setSheetToDOM(data || {});
-      setFormDisabled(true);
-      await toast("GM view updated (player saved).");
-    }
+    try {
+      await ready();
+      const { sheetId, ownerId, data } = msg.data || {};
+      if (!gmViewing) return;
+      if (gmViewing.sheetId === sheetId && gmViewing.ownerId === ownerId) {
+        setSheetToDOM(data || {});
+        setFormDisabled(true);
+        await toast("GM view updated (player saved).");
+      }
+    } catch {}
   });
 }
 
 // ========== Boot ==========
 (async function boot() {
   await ensureOBR();
+  setButtonsDisabled(true); // prevent early clicks
 
-  // Attach button handlers (work even if OBR is unavailable)
+  // Attach button handlers immediately (local features work even outside OBR)
   btns.new?.addEventListener("click", onNew);
   btns.save?.addEventListener("click", () => onSave(true));
   btns.export?.addEventListener("click", onExport);
@@ -273,6 +314,8 @@ function wireBroadcast() {
   if (OBRref?.onReady) {
     OBRref.onReady(async () => {
       log("OBR ready");
+      _readyResolve();           // flip the readiness latch
+      setButtonsDisabled(false); // enable UI now that bus is ready
       wireBroadcast();
       try {
         OBRref.room.onMetadataChange(renderTabs);
@@ -281,7 +324,9 @@ function wireBroadcast() {
       renderTabs();
     });
   } else {
-    log("OBR not detected; running in standalone mode.");
+    // Standalone preview (not inside Owlbear)
+    _readyResolve();            // allow code paths that await ready()
+    setButtonsDisabled(false);
     renderTabs();
   }
 
