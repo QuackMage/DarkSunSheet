@@ -4,17 +4,21 @@
   <meta charset="utf-8" />
   <title>Dark Sun Sheet</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Optional “pencil” fonts; safe fallbacks included -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Special+Elite&family=Schoolbell&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="./style.css" />
 </head>
 <body>
-  <!-- Thin GM bar: shows all player sheets as tabs (only for GMs) -->
+  <!-- GM bar (auto-hidden for players by JS) -->
   <div id="gm-bar" class="gm-bar" hidden>
     <div id="gm-tabs" class="tabs"></div>
     <div class="spacer"></div>
     <button id="gm-refresh" class="ghost">Refresh</button>
   </div>
 
-  <!-- Player header: local tabs + New/Import when empty -->
+  <!-- Player bar: tabs + new/import -->
   <div id="player-bar" class="player-bar">
     <div id="player-tabs" class="tabs"></div>
     <div class="spacer"></div>
@@ -23,90 +27,113 @@
     <input id="import-file" type="file" accept="application/json" hidden />
   </div>
 
-  <!-- Sheet -->
+  <!-- SHEET GRID (fixed size; no outer scrolling) -->
   <form id="sheet" class="sheet" autocomplete="off">
-    <div class="row head">
-      <input class="text" data-key="name" placeholder="Name" />
-      <input class="text" data-key="race" placeholder="Race" />
-      <input class="text" data-key="class" placeholder="Class" />
-      <div class="num-wrap"><label>Lvl</label><input class="num" data-key="level" inputmode="numeric" /></div>
-      <div class="num-wrap sp"><label>SP</label><input class="text" data-key="sp" placeholder="0 / 0" /></div>
-      <div class="spacer"></div>
-      <button id="btn-save" type="button" class="ghost">Save</button>
-      <button id="btn-export" type="button" class="ghost">Export</button>
-    </div>
-
-    <!-- Ability column -->
-    <div class="col abilities">
-      <!-- Each ability: score, modifier (±), checkbox under mod -->
-      <div class="abl" data-ability="str">
-        <label>STR</label>
-        <input class="num big" data-key="str" inputmode="numeric" />
-        <input class="num mod" data-key="str_mod" inputmode="numeric" />
-        <label class="chk"><input type="checkbox" data-key="str_chk" /></label>
-      </div>
-      <div class="abl" data-ability="dex">
-        <label>DEX</label>
-        <input class="num big" data-key="dex" inputmode="numeric" />
-        <input class="num mod" data-key="dex_mod" inputmode="numeric" />
-        <label class="chk"><input type="checkbox" data-key="dex_chk" /></label>
-      </div>
-      <div class="abl" data-ability="con">
-        <label>CON</label>
-        <input class="num big" data-key="con" inputmode="numeric" />
-        <input class="num mod" data-key="con_mod" inputmode="numeric" />
-        <label class="chk"><input type="checkbox" data-key="con_chk" /></label>
-      </div>
-      <div class="abl" data-ability="int">
-        <label>INT</label>
-        <input class="num big" data-key="int" inputmode="numeric" />
-        <input class="num mod" data-key="int_mod" inputmode="numeric" />
-        <label class="chk"><input type="checkbox" data-key="int_chk" /></label>
-      </div>
-      <div class="abl" data-ability="wis">
-        <label>WIS</label>
-        <input class="num big" data-key="wis" inputmode="numeric" />
-        <input class="num mod" data-key="wis_mod" inputmode="numeric" />
-        <label class="chk"><input type="checkbox" data-key="wis_chk" /></label>
-      </div>
-      <div class="abl" data-ability="cha">
-        <label>CHA</label>
-        <input class="num big" data-key="cha" inputmode="numeric" />
-        <input class="num mod" data-key="cha_mod" inputmode="numeric" />
-        <label class="chk"><input type="checkbox" data-key="cha_chk" /></label>
+    <!-- HEADER -->
+    <div class="head grid">
+      <label>Name:</label><input class="text grow" data-key="name" />
+      <label>Race:</label><input class="text grow" data-key="race" />
+      <label>Class:</label><input class="text grow" data-key="class" />
+      <label>Level:</label><input class="num sm" data-key="level" inputmode="numeric" />
+      <label>SP:</label>
+      <input class="text sm" data-key="sp" placeholder="0 / 0" />
+      <div class="head-actions">
+        <button id="btn-save" type="button" class="ghost">Save</button>
+        <button id="btn-export" type="button" class="ghost">Export</button>
       </div>
     </div>
 
-    <!-- Combat + Saves -->
-    <div class="col combat">
-      <div class="grid">
-        <div class="cell"><label>Max HP</label><input class="num" data-key="hp_max" /></div>
-        <div class="cell"><label>HP</label><input class="num" data-key="hp_cur" /></div>
-        <div class="cell"><label>AC</label><input class="num" data-key="ac" /></div>
-        <div class="cell"><label>Speed</label><input class="num" data-key="speed" /></div>
-        <div class="cell"><label>Init</label><input class="num" data-key="init" /></div>
-        <div class="cell"><label>Psionic</label><input class="num" data-key="psionic" /></div>
+    <!-- ABILITIES ROW -->
+    <div class="abilities">
+      <!-- one block per ability -->
+      <div class="abl">
+        <div class="title">STRENGTH</div>
+        <input class="score" data-key="str" inputmode="numeric" />
+        <input class="mod" data-key="str_mod" inputmode="numeric" />
+        <label class="tick"><input type="checkbox" data-key="str_chk" /></label>
       </div>
-      <div class="saves">
-        <div><label>Fort</label><input class="num" data-key="save_fort" /></div>
-        <div><label>Ref</label><input class="num" data-key="save_ref" /></div>
-        <div><label>Will</label><input class="num" data-key="save_will" /></div>
-        <div><label>Death</label><input class="num" data-key="save_death" /></div>
+      <div class="abl">
+        <div class="title">DEXTERITY</div>
+        <input class="score" data-key="dex" inputmode="numeric" />
+        <input class="mod" data-key="dex_mod" inputmode="numeric" />
+        <label class="tick"><input type="checkbox" data-key="dex_chk" /></label>
+      </div>
+      <div class="abl">
+        <div class="title">CONSTITUTION</div>
+        <input class="score" data-key="con" inputmode="numeric" />
+        <input class="mod" data-key="con_mod" inputmode="numeric" />
+        <label class="tick"><input type="checkbox" data-key="con_chk" /></label>
+      </div>
+      <div class="abl">
+        <div class="title">INTELLIGENCE</div>
+        <input class="score" data-key="int" inputmode="numeric" />
+        <input class="mod" data-key="int_mod" inputmode="numeric" />
+        <label class="tick"><input type="checkbox" data-key="int_chk" /></label>
+      </div>
+      <div class="abl">
+        <div class="title">WISDOM</div>
+        <input class="score" data-key="wis" inputmode="numeric" />
+        <input class="mod" data-key="wis_mod" inputmode="numeric" />
+        <label class="tick"><input type="checkbox" data-key="wis_chk" /></label>
+      </div>
+      <div class="abl">
+        <div class="title">CHARISMA</div>
+        <input class="score" data-key="cha" inputmode="numeric" />
+        <input class="mod" data-key="cha_mod" inputmode="numeric" />
+        <label class="tick"><input type="checkbox" data-key="cha_chk" /></label>
       </div>
     </div>
 
-    <!-- Three columns of text areas, no scroll overall -->
-    <div class="col tall">
-      <label>Attacks & Spells</label>
-      <textarea data-key="attacks"></textarea>
+    <!-- COMBAT + SAVES (icons suggested by shapes) -->
+    <div class="combat">
+      <div class="stat">
+        <div class="title">MAX HP</div>
+        <input class="big" data-key="hp_max" inputmode="numeric" />
+      </div>
+      <div class="stat">
+        <div class="title">CURRENT HP</div>
+        <input class="big" data-key="hp_cur" inputmode="numeric" />
+      </div>
+      <div class="stat">
+        <div class="title">ARMOUR CLASS</div>
+        <input class="big" data-key="ac" inputmode="numeric" />
+      </div>
+      <div class="stat">
+        <div class="title">SPEED</div>
+        <input class="big" data-key="speed" inputmode="numeric" />
+      </div>
+      <div class="stat">
+        <div class="title">INITIATIVE</div>
+        <input class="big" data-key="init" inputmode="numeric" />
+      </div>
+      <div class="stat">
+        <div class="title">PSIONIC THROWS</div>
+        <input class="big" data-key="psionic" inputmode="numeric" />
+      </div>
     </div>
-    <div class="col tall">
-      <label>Inventory</label>
-      <textarea data-key="inventory"></textarea>
+
+    <!-- THREE COLUMNS -->
+    <div class="cols">
+      <div class="col">
+        <div class="title">ATTACKS &amp; SPELLS</div>
+        <textarea data-key="attacks"></textarea>
+      </div>
+      <div class="col">
+        <div class="title">INVENTORY</div>
+        <textarea data-key="inventory"></textarea>
+      </div>
+      <div class="col">
+        <div class="title">TRAITS AND NOTES</div>
+        <textarea data-key="notes"></textarea>
+      </div>
     </div>
-    <div class="col tall">
-      <label>Traits & Notes</label>
-      <textarea data-key="notes"></textarea>
+
+    <!-- SAVES STRIP -->
+    <div class="saves">
+      <div class="save"><div class="label">FORTITUDE:</div><input class="box" data-key="save_fort" inputmode="numeric" /></div>
+      <div class="save"><div class="label">REFLEX:</div>   <input class="box" data-key="save_ref"  inputmode="numeric" /></div>
+      <div class="save"><div class="label">WILL:</div>     <input class="box" data-key="save_will" inputmode="numeric" /></div>
+      <div class="save"><div class="label">DEATH:</div>    <input class="box" data-key="save_death"inputmode="numeric" /></div>
     </div>
   </form>
 
