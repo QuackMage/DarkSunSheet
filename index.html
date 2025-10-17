@@ -21,9 +21,11 @@
       border-bottom:1px solid #0002; background:#efe8d9;
     }
     .gm-bar{ border-top:3px solid var(--accent) }
-    .tabs{ display:flex; gap:6px; flex-wrap:wrap }
+    .tabs{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
     .tabs button{ border:1px solid #0003; background:#fff8; padding:4px 8px; border-radius:6px; cursor:pointer }
     .tabs button.active{ background:#fff; border-color:var(--accent) }
+    .tabwrap{ display:inline-flex; gap:6px; align-items:center; }
+    .tabwrap .x{ border:1px solid #0003; background:transparent; padding:2px 6px; border-radius:6px; cursor:pointer; }
     .spacer{ flex:1 }
     .primary,.ghost{ border:1px solid #0003; background:#fff; padding:5px 10px; border-radius:6px; cursor:pointer }
     .ghost{ background:transparent }
@@ -194,15 +196,15 @@
   <div id="gm-bar" class="gm-bar" hidden>
     <div id="gm-tabs" class="tabs"></div>
     <div class="spacer"></div>
-    <button id="gm-refresh" class="ghost">Refresh</button>
+    <button id="gm-refresh" class="ghost" type="button">Refresh</button>
   </div>
 
   <!-- Player bar -->
   <div id="player-bar" class="player-bar">
     <div id="player-tabs" class="tabs"></div>
     <div class="spacer"></div>
-    <button id="btn-new" class="primary">New Character</button>
-    <button id="btn-import" class="ghost">Import</button>
+    <button id="btn-new" class="primary" type="button">New Character</button>
+    <button id="btn-import" class="ghost" type="button">Import</button>
     <input id="import-file" type="file" accept="application/json" hidden />
   </div>
 
@@ -232,6 +234,7 @@
       <div class="head-actions">
         <button id="btn-save" type="button" class="ghost">Save</button>
         <button id="btn-export" type="button" class="ghost">Export</button>
+        <button id="btn-delete" type="button" class="ghost">Delete</button>
       </div>
     </div>
 
@@ -295,6 +298,6 @@
     </div>
   </form>
 
-  <script type="module" src="./main.js?v=4"></script>
+  <script type="module" src="./main.js?v=5"></script>
 </body>
 </html>
