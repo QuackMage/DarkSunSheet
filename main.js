@@ -1,3 +1,4 @@
+// main.js v9 — autosave
 
 // ========== Utilities ==========
 const $ = (s) => document.querySelector(s);
@@ -25,6 +26,12 @@ const toast = async (msg) => {
   try { await OBRref.notification.show(msg); } catch { console.log(msg); }
 };
 const uuid = () => (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
+
+// Debounce helper
+const debounce = (fn, ms=800) => {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+};
 
 // ========== DOM refs ==========
 const btns = {
@@ -67,6 +74,10 @@ let gmViewing = /** @type {null | {sheetId:string, ownerId:string}} */ (null);
 let currentId = null;
 const getActiveId = () => currentId || lastLocalId();
 
+// Track last-saved snapshots so we only save on real changes
+// Map<sheetId, stringifiedSheetJSON>
+const lastSaved = Object.create(null);
+
 // Field list
 const FIELDS = [
   "name","race","class","level","sp",
@@ -94,6 +105,9 @@ function setSheetToDOM(data = {}) {
     if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = !!data[k];
     else /** @type {HTMLInputElement|HTMLTextAreaElement} */(el).value = data[k] ?? "";
   }
+  // Refresh snapshot for the active sheet so autosave doesn't immediately fire
+  const id = getActiveId();
+  if (id) lastSaved[id] = JSON.stringify(getSheetFromDOM());
 }
 function setFormDisabled(disabled) {
   Array.from(form.elements).forEach(el => {
@@ -217,6 +231,9 @@ async function onNew() {
   currentId = id;
   setSheetToDOM(local[id]);
 
+  // snapshot
+  lastSaved[id] = JSON.stringify(getSheetFromDOM());
+
   try { await upsertRoomIndex(id, { name: local[id].name, ownerId, ownerName }); } catch {}
   await toast("New character created.");
   renderTabs();
@@ -229,6 +246,9 @@ async function onSave(pushToGM = true) {
 
   local[id] = { ...local[id], ...getSheetFromDOM() };
   writeLocal(local);
+
+  // update snapshot so autosave doesn't immediately re-trigger
+  lastSaved[id] = JSON.stringify(getSheetFromDOM());
 
   try {
     await ready();
@@ -276,6 +296,10 @@ async function onImport() {
       writeLocal(local);
       currentId = id;
       setSheetToDOM(local[id]);
+
+      // snapshot
+      lastSaved[id] = JSON.stringify(getSheetFromDOM());
+
       try { await upsertRoomIndex(id, { name: local[id].name, ownerId, ownerName }); } catch {}
       await toast("Imported.");
       renderTabs();
@@ -312,6 +336,28 @@ async function onRefresh() {
   try { await ready(); } catch {}
   await toast("Refreshed.");
   renderTabs();
+}
+
+// ========== Autosave wiring ==========
+const debouncedAutoSave = debounce(async () => {
+  // Don’t autosave if GM is viewing someone else’s sheet (read-only)
+  if (gmViewing) return;
+
+  const id = getActiveId();
+  if (!id) return;
+
+  const nowStr = JSON.stringify(getSheetFromDOM());
+  if (lastSaved[id] === nowStr) return; // nothing changed
+
+  // Save and push to GM as usual
+  await onSave(true);
+}, 800);
+
+function wireAutoSaveListeners() {
+  if (!form) return;
+  // Any edit inside the sheet triggers autosave
+  form.addEventListener("input", debouncedAutoSave, true);
+  form.addEventListener("change", debouncedAutoSave, true);
 }
 
 // ========== Broadcast wiring (GM <-> Player) ==========
@@ -373,6 +419,9 @@ function wireBroadcast() {
   btns.import?.addEventListener("click", onImport);
   btns.del?.addEventListener("click", onDelete);
   btns.refresh?.addEventListener("click", onRefresh);
+
+  // Autosave listeners (work regardless of OBR)
+  wireAutoSaveListeners();
 
   // Fallback: if onReady is slow/missed, re-enable UI after 2s anyway
   const enableFallback = setTimeout(() => {
