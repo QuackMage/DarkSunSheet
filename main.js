@@ -1,303 +1,405 @@
-<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>Dark Sun Sheet</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    /* ===== Base styles ===== */
-    :root { --paper:#f7f3ea; --ink:#1e1b16; --line:#5b5245; --accent:#8b5e34; }
-    *{ box-sizing:border-box }
-    html,body{ height:100%; margin:0 }
-    body{
-      background:var(--paper); color:var(--ink);
-      font:14px/1.2 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Special Elite", Schoolbell, sans-serif;
-      overflow:hidden; /* no outer scroll */
+
+// ========== Utilities ==========
+const $ = (s) => document.querySelector(s);
+const log = (...a) => console.log("[DarkSunSheet]", ...a);
+
+// Try both global OBR and ESM import as fallback
+let OBRref = typeof window !== "undefined" ? window.OBR : undefined;
+async function ensureOBR() {
+  if (OBRref) return;
+  try {
+    const mod = await import("https://cdn.jsdelivr.net/npm/@owlbear-rodeo/sdk/+esm");
+    OBRref = mod?.default || mod;
+    log("OBR imported via ESM");
+  } catch (e) {
+    log("ESM import failed; using global OBR if present.", e);
+  }
+}
+
+// One-time readiness latch
+let _readyResolve;
+const _ready = new Promise((res) => (_readyResolve = res));
+async function ready() { await _ready; }
+
+const toast = async (msg) => {
+  try { await OBRref.notification.show(msg); } catch { console.log(msg); }
+};
+const uuid = () => (crypto?.randomUUID?.() || Math.random().toString(36).slice(2));
+
+// ========== DOM refs ==========
+const btns = {
+  new: $("#btn-new"),
+  import: $("#btn-import"),
+  save: $("#btn-save"),
+  export: $("#btn-export"),
+  del:  $("#btn-delete"),
+  refresh: $("#gm-refresh"),
+  file: /** @type {HTMLInputElement} */ ($("#import-file")),
+  tabsPlayer: $("#player-tabs"),
+  tabsGM: $("#gm-tabs"),
+  gmBar: $("#gm-bar"),
+  playerBar: $("#player-bar"),
+};
+const form = /** @type {HTMLFormElement} */ ($("#sheet"));
+
+// quick enable/disable for top buttons
+const setButtonsDisabled = (disabled) => {
+  [btns.new, btns.import, btns.save, btns.export, btns.del, btns.refresh]
+    .forEach(b => { if (b) b.disabled = !!disabled; });
+};
+
+// ========== Data model ==========
+const NS = "com.quackmage.darksun";
+const LOCAL = `${NS}:sheets`;          // player-private
+const ROOM_KEY = `${NS}:index`;        // tiny shared index
+
+// Broadcast channels
+const CH = {
+  REQ: `${NS}:req-sheet`,
+  PUSH: `${NS}:push-sheet`,
+  SAVED: `${NS}:saved-sheet`,
+};
+
+// Which sheet the GM is currently viewing (not editing)
+let gmViewing = /** @type {null | {sheetId:string, ownerId:string}} */ (null);
+
+// Track which local sheet is active
+let currentId = null;
+const getActiveId = () => currentId || lastLocalId();
+
+// Field list
+const FIELDS = [
+  "name","race","class","level","sp",
+  "str","str_mod","dex","dex_mod","con","con_mod","int","int_mod","wis","wis_mod","cha","cha_mod",
+  "hp_max","hp_cur","ac","speed","init","psionic",
+  "attacks","inventory","notes",
+  "save_fort","save_ref","save_will","save_death",
+  "str_chk","dex_chk","con_chk","int_chk","wis_chk","cha_chk"
+];
+
+function getSheetFromDOM() {
+  const o = {};
+  for (const k of FIELDS) {
+    const el = document.querySelector(`[data-key="${k}"]`);
+    if (!el) continue;
+    if (el instanceof HTMLInputElement && el.type === "checkbox") o[k] = el.checked;
+    else o[k] = /** @type {HTMLInputElement|HTMLTextAreaElement} */(el).value ?? "";
+  }
+  return o;
+}
+function setSheetToDOM(data = {}) {
+  for (const k of FIELDS) {
+    const el = document.querySelector(`[data-key="${k}"]`);
+    if (!el) continue;
+    if (el instanceof HTMLInputElement && el.type === "checkbox") el.checked = !!data[k];
+    else /** @type {HTMLInputElement|HTMLTextAreaElement} */(el).value = data[k] ?? "";
+  }
+}
+function setFormDisabled(disabled) {
+  Array.from(form.elements).forEach(el => {
+    if (el instanceof HTMLButtonElement) return; // keep top buttons active
+    el.disabled = !!disabled;
+  });
+}
+
+// Local storage helpers
+const readLocal = () => JSON.parse(localStorage.getItem(LOCAL) || "{}");
+const writeLocal = (obj) => localStorage.setItem(LOCAL, JSON.stringify(obj));
+const lastLocalId = () => Object.keys(readLocal()).slice(-1)[0];
+
+// Room index helpers
+async function upsertRoomIndex(sheetId, metaPatch) {
+  await ready();
+  const cur = await OBRref.room.getMetadata();
+  const idx = cur[ROOM_KEY] || {};
+  idx[sheetId] = { ...(idx[sheetId] || {}), ...metaPatch };
+  await OBRref.room.setMetadata({ [ROOM_KEY]: idx });
+}
+async function removeFromRoomIndex(sheetId){
+  try {
+    await ready();
+    const cur = await OBRref.room.getMetadata();
+    const idx = cur[ROOM_KEY] || {};
+    if (sheetId in idx) {
+      delete idx[sheetId];
+      await OBRref.room.setMetadata({ [ROOM_KEY]: idx });
     }
+  } catch {}
+}
 
-    /* top bars */
-    .gm-bar,.player-bar{
-      display:flex; align-items:center; gap:8px; padding:6px 8px;
-      border-bottom:1px solid #0002; background:#efe8d9;
+// ========== Tabs rendering ==========
+async function renderTabs() {
+  // Player tabs: local
+  btns.tabsPlayer.innerHTML = "";
+  const local = readLocal();
+  for (const [id, sheet] of Object.entries(local)) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = sheet.name || "Untitled";
+    b.className = (id === currentId ? "active" : "");
+    b.onclick = () => {
+      currentId = id;
+      gmViewing = null;
+      setFormDisabled(false);
+      setSheetToDOM(sheet);
+      renderTabs(); // refresh active class
+    };
+    btns.tabsPlayer.appendChild(b);
+  }
+
+  // GM list: requires OBR
+  try {
+    await ready();
+    const role = await OBRref.player.getRole(); // "GM" | "PLAYER"
+    btns.gmBar.hidden = role !== "GM";
+    if (role === "GM") {
+      btns.tabsGM.innerHTML = "";
+      const idx = (await OBRref.room.getMetadata())[ROOM_KEY] || {};
+      const me = await OBRref.player.getId();
+
+      for (const [sheetId, meta] of Object.entries(idx)) {
+        const wrap = document.createElement("div");
+        wrap.className = "tabwrap";
+
+        const b = document.createElement("button");
+        b.type = "button";
+        const owner = meta.ownerId === me ? "You" : (meta.ownerName || meta.ownerId);
+        b.textContent = `${meta.name || "Untitled"} (${owner})`;
+        b.onclick = async () => {
+          await ready();
+          gmViewing = { sheetId, ownerId: meta.ownerId };
+          setSheetToDOM({});
+          setFormDisabled(true); // GM view is read-only
+          await toast(`Requesting "${meta.name || sheetId}" from ${owner}…`);
+          await OBRref.broadcast.sendMessage(CH.REQ, { sheetId, ownerId: meta.ownerId });
+        };
+
+        const x = document.createElement("button");
+        x.type = "button";
+        x.className = "x";
+        x.textContent = "×";
+        x.title = "Remove from GM list";
+        x.onclick = async (e) => {
+          e.stopPropagation();
+          if (!confirm(`Remove "${meta.name || sheetId}" from the GM list?`)) return;
+          await removeFromRoomIndex(sheetId);
+          await toast("Removed from list.");
+          renderTabs();
+        };
+
+        wrap.appendChild(b);
+        wrap.appendChild(x);
+        btns.tabsGM.appendChild(wrap);
+      }
     }
-    .gm-bar{ border-top:3px solid var(--accent) }
-    .tabs{ display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
-    .tabs button{ border:1px solid #0003; background:#fff8; padding:4px 8px; border-radius:6px; cursor:pointer }
-    .tabs button.active{ background:#fff; border-color:var(--accent) }
-    .tabwrap{ display:inline-flex; gap:6px; align-items:center; }
-    .tabwrap .x{ border:1px solid #0003; background:transparent; padding:2px 6px; border-radius:6px; cursor:pointer; }
-    .spacer{ flex:1 }
-    .primary,.ghost{ border:1px solid #0003; background:#fff; padding:5px 10px; border-radius:6px; cursor:pointer }
-    .ghost{ background:transparent }
+  } catch {
+    /* not in OBR context yet */
+  }
+}
 
-    /* Sheet grid tuned for 640px popover (no scroll) */
-    .sheet{
-      height:calc(100% - 76px); /* total of top bars */
-      padding:10px;
-      display:grid;
-      grid-template-rows: 86px 120px 106px 1fr 60px; /* header, abilities, combat, columns, saves */
-      gap:10px;
+// ========== Button handlers ==========
+async function onNew() {
+  // local first
+  const id = uuid();
+  const local = readLocal();
+
+  // try to fetch real owner (if ready)
+  let ownerId = "local";
+  let ownerName = "Local Player";
+  try {
+    await ready();
+    ownerId = await OBRref.player.getId();
+    ownerName = await OBRref.player.getName();
+  } catch {}
+
+  local[id] = { id, name: "New Character", ownerId, ownerName, createdAt: Date.now(), ...getSheetFromDOM() };
+  writeLocal(local);
+  currentId = id;
+  setSheetToDOM(local[id]);
+
+  try { await upsertRoomIndex(id, { name: local[id].name, ownerId, ownerName }); } catch {}
+  await toast("New character created.");
+  renderTabs();
+}
+
+async function onSave(pushToGM = true) {
+  const local = readLocal();
+  const id = getActiveId();
+  if (!id || !local[id]) return toast("No local character to save.");
+
+  local[id] = { ...local[id], ...getSheetFromDOM() };
+  writeLocal(local);
+
+  try {
+    await ready();
+    await upsertRoomIndex(id, { name: local[id].name });
+    if (pushToGM && OBRref?.broadcast) {
+      await OBRref.broadcast.sendMessage(CH.SAVED, { sheetId: id, ownerId: local[id].ownerId, data: local[id] });
     }
+  } catch {}
 
-    /* Header */
-    .head{
-      position:relative;
-      display:grid;
-      grid-template-columns:
-        auto 1fr 16px
-        auto 1fr 16px
-        auto 1fr
-        auto 1fr
-        auto 1fr;
-      grid-auto-rows: 32px;
-      align-items:center;
-      gap:6px 8px;
-    }
-    .head label{ opacity:.9 }
-    .head .text{
-      border:1px solid var(--line); background:#ffffffcc; border-radius:6px; padding:6px 8px; width:100%;
-    }
+  await toast("Saved.");
+  renderTabs();
+}
 
-    /* Named tweaks/anchors */
-    .name-label{ width:63px; display:inline-block; }
-    .name-input{ width:83px; }
+async function onExport() {
+  const local = readLocal();
+  const id = getActiveId();
+  if (!id || !local[id]) return toast("Nothing to export.");
+  const blob = new Blob([JSON.stringify(local[id], null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = (local[id].name || "character") + ".json";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 800);
+}
 
-    .shift-135{ transform: translateX(-135px); } /* default; overridden by extracted rules below */
-    .level-input, .sp-input{ width: calc(100% - 100px); }
+async function onImport() {
+  btns.file.onchange = async () => {
+    const f = btns.file.files?.[0];
+    if (!f) return;
+    try {
+      const obj = JSON.parse(await f.text());
+      const id = obj.id || uuid();
 
-    .head-actions{
-      position:absolute;
-      right:0; top:-6px;
-      display:flex; gap:6px; z-index:2;
-    }
+      // default owner
+      let ownerId = "local";
+      let ownerName = "Local Player";
+      try {
+        await ready();
+        ownerId = await OBRref.player.getId();
+        ownerName = await OBRref.player.getName();
+      } catch {}
 
-    /* Abilities row */
-    .abilities{
-      display:grid; grid-template-columns: repeat(6, 1fr); gap:10px;
-    }
-    .abl{
-      background:#fff2; border:1px solid #0002; border-radius:10px;
-      padding:6px; display:grid;
-      grid-template-rows: 18px 56px 38px 20px; place-items:center;
-    }
-    .abl .title{ font-size:12px; letter-spacing:.35px }
-    .abl .score{
-      width:78px; height:56px; text-align:center; font-size:20px;
-      border:2px solid var(--line); background:#fff; border-radius:10px;
-    }
-    .abl .mod{
-      width:56px; height:38px; text-align:center; font-size:18px;
-      border:2px solid var(--line); background:#fff; border-radius:999px;
-    }
-    .abl .tick input{ width:14px; height:14px }
+      const local = readLocal();
+      local[id] = { id, ownerId, ownerName, ...obj };
+      writeLocal(local);
+      currentId = id;
+      setSheetToDOM(local[id]);
+      try { await upsertRoomIndex(id, { name: local[id].name, ownerId, ownerName }); } catch {}
+      await toast("Imported.");
+      renderTabs();
+    } catch (e) {
+      console.error(e); toast("Import failed (bad JSON?).");
+    } finally { btns.file.value = ""; }
+  };
+  btns.file.click();
+}
 
-    /* Combat strip */
-    .combat{
-      display:grid; grid-template-columns: repeat(6, 1fr); gap:10px;
-      margin-top:5px;
-    }
-    .combat .stat{
-      border:1px solid #0002; border-radius:10px; background:#fff2;
-      padding:6px; display:grid; grid-template-rows: 18px 1fr; align-items:center;
-    }
-    .combat .title{ font-size:12px; letter-spacing:.35px; text-align:center }
-    .combat .big{
-      width:100%; height:36px; text-align:center; font-size:18px;
-      border:2px solid var(--line); background:#fff; border-radius:10px;
-    }
+async function onDelete() {
+  const local = readLocal();
+  const id = getActiveId();
+  if (!id || !local[id]) return toast("No sheet selected.");
+  const name = local[id].name || "Untitled";
+  if (!confirm(`Delete "${name}" from your device?`)) return;
 
-    /* Three columns */
-    .cols{ display:grid; grid-template-columns: repeat(3, 1fr); gap:12px; }
-    .cols .col{ display:grid; grid-template-rows: 18px 1fr; gap:6px; }
-    .cols .title{ font-size:12px; letter-spacing:.35px; text-align:center }
-    .cols textarea{
-      resize:none; width:100%; height:100%;
-      border:1px solid var(--line); border-radius:10px; padding:8px; background:#fff;
-    }
+  // remove local
+  delete local[id];
+  writeLocal(local);
 
-    /* Saves bar */
-    .saves{
-      display:grid; grid-template-columns: repeat(4, 1fr); gap:10px;
-      background:#948a7c; border-radius:8px; padding:6px 8px;
-    }
-    .save{ display:flex; align-items:center; gap:6px; justify-content:center }
-    .save .label{ color:#fff; font-weight:600; letter-spacing:.35px }
-    .save .box{
-      width:58px; height:26px; text-align:center; font-size:16px;
-      border:2px solid #ddd; border-radius:6px; background:#fff;
-    }
+  // best-effort remove from GM list
+  await removeFromRoomIndex(id);
 
-    /* ===== Your extracted overrides (kept verbatim) ===== */
-    /* Extracted from: https://rawcdn.githack.com/QuackMage/DarkSunSheet/c16c62138e23e8bba1c61eb5ccedb3b59f8168da/index.html?obrref=aHR0cHM6Ly93d3cub3dsYmVhci5yb2RlbyBmOWFiNzgyYzI2MGEzZDZmNDM4ODJhMDFiN2VjYjFhZTNhODgwNTdjMDY1ZmY2OGMxMzQ1OWQ5MTlmYjA1N2Zl */
+  // clear UI or switch to last sheet
+  currentId = null;
+  setSheetToDOM({});
+  setFormDisabled(false);
+  await toast(`Deleted "${name}".`);
+  renderTabs();
+}
 
-    html > form#sheet > div.head:nth-of-type(1) { height: 45px; }
-    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(3) { transform: translateX(-72px); }
-    html > form#sheet > div.head:nth-of-type(1) > input.text.shift-135:nth-of-type(3) { transform: translateX(-75px); }
-    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(4) { transform: translateX(-70px); }
-    html > form#sheet > div.head:nth-of-type(1) > input.text.level-input.shift-135:nth-of-type(4) {
-      width: 50px; transform: translateX(-73px);
-    }
-    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(5) { transform: translateX(-121px); }
-    html > form#sheet > div.head:nth-of-type(1) > input.text.sp-input.shift-135:nth-of-type(5) {
-      transform: translateX(-125px); width: 50px;
-    }
-    html > form#sheet > div.abilities:nth-of-type(2) { transform: translateY(-42px); }
-    html > form#sheet > div.combat:nth-of-type(3) { transform: translateY(-21px); }
-    html > form#sheet > div.cols:nth-of-type(4) { transform: translateY(-26px); height: 161px; }
-    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(1) > div.title { transform: translateY(10px); }
-    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(2) > div.title { transform: translateY(10px); }
-    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(3) > div.title { transform: translateY(10px); }
-    html > form#sheet > div.saves:nth-of-type(5) { transform: translateY(-28px); }
+async function onRefresh() {
+  try { await ready(); } catch {}
+  await toast("Refreshed.");
+  renderTabs();
+}
 
-    /* Inline <style> block values reflected */
-    :root { --paper: #f7f3ea; --ink: #1e1b16; --line: #5b5245; --accent: #8b5e34; }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
-    body { background: var(--paper); color: var(--ink); font: 14px / 1.2 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Special Elite", Schoolbell, sans-serif; overflow: hidden; }
-    .gm-bar, .player-bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid rgba(0, 0, 0, 0.133); background: rgb(239, 232, 217); }
-    .gm-bar { border-top: 3px solid var(--accent); }
-    .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-    .tabs button { border: 1px solid rgba(0, 0, 0, 0.2); background: rgba(255, 255, 255, 0.533); padding: 4px 8px; border-radius: 6px; cursor: pointer; }
-    .tabs button.active { background: rgb(255, 255, 255); border-color: var(--accent); }
-    .spacer { flex: 1 1 0%; }
-    .primary, .ghost { border: 1px solid rgba(0, 0, 0, 0.2); background: rgb(255, 255, 255); padding: 5px 10px; border-radius: 6px; cursor: pointer; }
-    .ghost { background: transparent; }
-    .sheet { height: calc(100% - 76px); padding: 10px; display: grid; grid-template-rows: 86px 120px 106px 1fr 60px; gap: 10px; }
-    .head { position: relative; display: grid; grid-template-columns: auto 1fr 16px auto 1fr 16px auto 1fr auto 1fr auto 1fr; grid-auto-rows: 32px; align-items: center; gap: 6px 8px; }
-    .head label { opacity: 0.9; }
-    .head .text { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.8); border-radius: 6px; padding: 6px 8px; width: 100%; }
-    .name-label { width: 63px; display: inline-block; }
-    .name-input { transform: translateX(-27px); width: 83px; }
-    .shift-135 { transform: translateX(-53px); }
-    .level-input, .sp-input { width: calc(100% - 100px); }
-    .head-actions { position: absolute; right: 0px; top: -6px; display: flex; gap: 6px; z-index: 2; }
-    .abilities { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
-    .abl { background: rgba(255, 255, 255, 0.133); border: 1px solid rgba(0, 0, 0, 0.133); border-radius: 10px; padding: 6px; display: grid; grid-template-rows: 18px 56px 38px 20px; place-items: center; }
-    .abl .title { font-size: 12px; letter-spacing: 0.35px; }
-    .abl .score { width: 78px; height: 56px; text-align: center; font-size: 20px; border: 2px solid var(--line); background: rgb(255, 255, 255); border-radius: 10px; }
-    .abl .mod { width: 56px; height: 38px; text-align: center; font-size: 18px; border: 2px solid var(--line); background: rgb(255, 255, 255); border-radius: 999px; }
-    .abl .tick input { width: 14px; height: 14px; }
-    .combat { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 5px; }
-    .combat .stat { border: 1px solid rgba(0, 0, 0, 0.133); border-radius: 10px; background: rgba(255, 255, 255, 0.133); padding: 6px; display: grid; grid-template-rows: 18px 1fr; align-items: center; }
-    .combat .title { font-size: 12px; letter-spacing: 0.35px; text-align: center; transform: translateY(4px); }
-    .combat .big { transform: translateX(18px); width: 67%; height: 47px; text-align: center; font-size: 20px; border: 2px solid var(--line); background: rgb(255, 255, 255); border-radius: 10px; }
-    .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .cols .col { display: grid; grid-template-rows: 18px 1fr; gap: 6px; }
-    .cols .title { font-size: 12px; letter-spacing: 0.35px; text-align: center; }
-    .cols textarea { resize: none; width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: rgb(255, 255, 255); }
-    .saves { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; background: rgb(148, 138, 124); border-radius: 8px; padding: 6px 8px; }
-    .save { display: flex; align-items: center; gap: 6px; justify-content: center; }
-    .save .label { color: rgb(255, 255, 255); font-weight: 600; letter-spacing: 0.35px; }
-    .save .box { width: 58px; height: 26px; text-align: center; font-size: 16px; border: 2px solid rgb(221, 221, 221); border-radius: 6px; background: rgb(255, 255, 255); }
-  </style>
-</head>
-<body>
-  <!-- GM bar (hidden for players by JS) -->
-  <div id="gm-bar" class="gm-bar" hidden>
-    <div id="gm-tabs" class="tabs"></div>
-    <div class="spacer"></div>
-    <button id="gm-refresh" class="ghost" type="button">Refresh</button>
-  </div>
+// ========== Broadcast wiring (GM <-> Player) ==========
+function wireBroadcast() {
+  if (!OBRref?.broadcast) return;
 
-  <!-- Player bar -->
-  <div id="player-bar" class="player-bar">
-    <div id="player-tabs" class="tabs"></div>
-    <div class="spacer"></div>
-    <button id="btn-new" class="primary" type="button">New Character</button>
-    <button id="btn-import" class="ghost" type="button">Import</button>
-    <input id="import-file" type="file" accept="application/json" hidden />
-  </div>
+  // GM requests: only the owner responds with full data
+  OBRref.broadcast.onMessage(CH.REQ, async (msg) => {
+    try {
+      await ready();
+      const { sheetId, ownerId } = msg.data || {};
+      const myId = await OBRref.player.getId();
+      if (!sheetId || ownerId !== myId) return; // not mine
+      const local = readLocal();
+      const data = local[sheetId];
+      if (!data) return;
+      await OBRref.broadcast.sendMessage(CH.PUSH, { sheetId, ownerId: myId, data });
+    } catch {}
+  });
 
-  <!-- Sheet -->
-  <form id="sheet" class="sheet" autocomplete="off">
-    <!-- HEADER -->
-    <div class="head">
-      <label class="name-label">Name:</label>
-      <input class="text name-input" data-key="name" />
+  // GM receives a pushed sheet
+  OBRref.broadcast.onMessage(CH.PUSH, async (msg) => {
+    try {
+      await ready();
+      const { sheetId, ownerId, data } = msg.data || {};
+      if (!gmViewing) return;
+      if (gmViewing.sheetId === sheetId && gmViewing.ownerId === ownerId) {
+        setSheetToDOM(data || {});
+        setFormDisabled(true);
+        await toast(`Viewing live sheet from ${ownerId}.`);
+      }
+    } catch {}
+  });
 
-      <span class="shift-135"></span>
+  // Player saved; update GM view if it matches
+  OBRref.broadcast.onMessage(CH.SAVED, async (msg) => {
+    try {
+      await ready();
+      const { sheetId, ownerId, data } = msg.data || {};
+      if (!gmViewing) return;
+      if (gmViewing.sheetId === sheetId && gmViewing.ownerId === ownerId) {
+        setSheetToDOM(data || {});
+        setFormDisabled(true);
+        await toast("GM view updated (player saved).");
+      }
+    } catch {}
+  });
+}
 
-      <label class="shift-135">Race:</label>
-      <input class="text shift-135" data-key="race" />
+// ========== Boot ==========
+(async function boot() {
+  await ensureOBR();
+  setButtonsDisabled(true); // disable briefly during init
 
-      <span class="shift-135"></span>
+  // Attach handlers immediately
+  btns.new?.addEventListener("click", onNew);
+  btns.save?.addEventListener("click", () => onSave(true));
+  btns.export?.addEventListener("click", onExport);
+  btns.import?.addEventListener("click", onImport);
+  btns.del?.addEventListener("click", onDelete);
+  btns.refresh?.addEventListener("click", onRefresh);
 
-      <label class="shift-135">Class:</label>
-      <input class="text shift-135" data-key="class" />
+  // Fallback: if onReady is slow/missed, re-enable UI after 2s anyway
+  const enableFallback = setTimeout(() => {
+    setButtonsDisabled(false);
+    log("Enabled UI via fallback");
+  }, 2000);
 
-      <label class="shift-135">Level:</label>
-      <input class="text level-input shift-135" data-key="level" inputmode="numeric" />
+  if (OBRref?.onReady) {
+    OBRref.onReady(async () => {
+      log("OBR ready");
+      clearTimeout(enableFallback);
+      _readyResolve();           // flip readiness latch for OBR calls
+      setButtonsDisabled(false); // enable UI for all roles
+      wireBroadcast();
+      try {
+        OBRref.room.onMetadataChange(renderTabs);
+        OBRref.player.onChange(renderTabs);
+      } catch {}
+      renderTabs();
+    });
+  } else {
+    // Standalone preview (not inside Owlbear)
+    clearTimeout(enableFallback);
+    _readyResolve();
+    setButtonsDisabled(false);
+    renderTabs();
+  }
 
-      <label class="shift-135">SP:</label>
-      <input class="text sp-input shift-135" data-key="sp" placeholder="0 / 0" />
-
-      <div class="head-actions">
-        <button id="btn-save" type="button" class="ghost">Save</button>
-        <button id="btn-export" type="button" class="ghost">Export</button>
-        <button id="btn-delete" type="button" class="ghost">Delete</button>
-      </div>
-    </div>
-
-    <!-- ABILITIES -->
-    <div class="abilities">
-      <div class="abl"><div class="title">STRENGTH</div>
-        <input class="score" data-key="str" inputmode="numeric" />
-        <input class="mod"   data-key="str_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="str_chk" /></label>
-      </div>
-      <div class="abl"><div class="title">DEXTERITY</div>
-        <input class="score" data-key="dex" inputmode="numeric" />
-        <input class="mod"   data-key="dex_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="dex_chk" /></label>
-      </div>
-      <div class="abl"><div class="title">CONSTITUTION</div>
-        <input class="score" data-key="con" inputmode="numeric" />
-        <input class="mod"   data-key="con_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="con_chk" /></label>
-      </div>
-      <div class="abl"><div class="title">INTELLIGENCE</div>
-        <input class="score" data-key="int" inputmode="numeric" />
-        <input class="mod"   data-key="int_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="int_chk" /></label>
-      </div>
-      <div class="abl"><div class="title">WISDOM</div>
-        <input class="score" data-key="wis" inputmode="numeric" />
-        <input class="mod"   data-key="wis_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="wis_chk" /></label>
-      </div>
-      <div class="abl"><div class="title">CHARISMA</div>
-        <input class="score" data-key="cha" inputmode="numeric" />
-        <input class="mod"   data-key="cha_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="cha_chk" /></label>
-      </div>
-    </div>
-
-    <!-- COMBAT -->
-    <div class="combat">
-      <div class="stat"><div class="title">MAX HP</div><input class="big" data-key="hp_max" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">CURRENT HP</div><input class="big" data-key="hp_cur" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">ARMOUR CLASS</div><input class="big" data-key="ac" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">SPEED</div><input class="big" data-key="speed" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">INITIATIVE</div><input class="big" data-key="init" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">PSIONIC THROWS</div><input class="big" data-key="psionic" inputmode="numeric" /></div>
-    </div>
-
-    <!-- THREE COLUMNS -->
-    <div class="cols">
-      <div class="col"><div class="title">ATTACKS &amp; SPELLS</div><textarea data-key="attacks"></textarea></div>
-      <div class="col"><div class="title">INVENTORY</div><textarea data-key="inventory"></textarea></div>
-      <div class="col"><div class="title">TRAITS AND NOTES</div><textarea data-key="notes"></textarea></div>
-    </div>
-
-    <!-- SAVES -->
-    <div class="saves">
-      <div class="save"><div class="label">FORTITUDE:</div><input class="box" data-key="save_fort" inputmode="numeric" /></div>
-      <div class="save"><div class="label">REFLEX:</div>   <input class="box" data-key="save_ref"  inputmode="numeric" /></div>
-      <div class="save"><div class="label">WILL:</div>     <input class="box" data-key="save_will" inputmode="numeric" /></div>
-      <div class="save"><div class="label">DEATH:</div>    <input class="box" data-key="save_death"inputmode="numeric" /></div>
-    </div>
-  </form>
-
-  <script type="module" src="./main.js?v=5"></script>
-</body>
-</html>
+  log("bootstrap complete");
+})();
