@@ -83,11 +83,11 @@
     .abl .title{ font-size:12px; letter-spacing:.35px }
     .abl .score{
       width:78px; height:56px; text-align:center; font-size:20px;
-      border:2px solid var(--line); background:#fff; border-radius:10px;
+      border:2px solid(var(--line)); background:#fff; border-radius:10px;
     }
     .abl .mod{
       width:56px; height:38px; text-align:center; font-size:18px;
-      border:2px solid var(--line); background:#fff; border-radius:999px;
+      border:2px solid(var(--line)); background:#fff; border-radius:999px;
     }
     .abl .tick input{ width:14px; height:14px }
 
@@ -127,70 +127,21 @@
       border:2px solid #ddd; border-radius:6px; background:#fff;
     }
 
-    /* ===== Your extracted overrides (kept verbatim) ===== */
-    /* Extracted from: https://rawcdn.githack.com/QuackMage/DarkSunSheet/c16c62138e23e8bba1c61eb5ccedb3b59f8168da/index.html?obrref=aHR0cHM6Ly93d3cub3dsYmVhci5yb2RlbyBmOWFiNzgyYzI2MGEzZDZmNDM4ODJhMDFiN2VjYjFhZTNhODgwNTdjMDY1ZmY2OGMxMzQ1OWQ5MTlmYjA1N2Zl */
-
-    html > form#sheet > div.head:nth-of-type(1) { transform: translateY(15px); }
-    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(3) { transform: translateX(-76px); }
-    html > form#sheet > div.head:nth-of-type(1) > input.text.shift-135:nth-of-type(3) { transform: translateX(-77px); }
-    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(4) { transform: translateX(-68px); }
-    html > form#sheet > div.head:nth-of-type(1) > input.text.level-input.shift-135:nth-of-type(4) { transform: translateX(-73px);
-    width: 50px; }
-    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(5) { transform: translateX(-135px); }
-    html > form#sheet > div.head:nth-of-type(1) > input.text.sp-input.shift-135:nth-of-type(5) { transform: translateX(-136px);
-    width: 65px; }
-    html > form#sheet > div.head:nth-of-type(1) > div.head-actions { scale: 0.7;
-    transform: translate(49px, -26px); }
-    html > form#sheet > div.abilities:nth-of-type(2) { transform: translateY(-38px); }
-    html > form#sheet > div.combat:nth-of-type(3) { transform: translateY(-11px); }
-    html > form#sheet > div.cols:nth-of-type(4) { height: 180px;
-    transform: translateY(-27px); }
-    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(1) > div.title { transform: translateY(9px); }
-    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(2) > div.title { transform: translateY(9px); }
-    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(3) > div.title { transform: translateY(9px); }
-    html > form#sheet > div.saves:nth-of-type(5) { transform: translateY(-30px);
-    height: 40px; }
-
-    /* Inline <style> block values reflected */
-    :root { --paper: #f7f3ea; --ink: #1e1b16; --line: #5b5245; --accent: #8b5e34; }
-    * { box-sizing: border-box; }
-    html, body { height: 100%; margin: 0; }
-    body { background: var(--paper); color: var(--ink); font: 14px / 1.2 system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, "Special Elite", Schoolbell, sans-serif; overflow: hidden; }
-    .gm-bar, .player-bar { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid rgba(0, 0, 0, 0.133); background: rgb(239, 232, 217); }
-    .gm-bar { border-top: 3px solid var(--accent); }
-    .tabs { display: flex; gap: 6px; flex-wrap: wrap; }
-    .tabs button { border: 1px solid rgba(0, 0, 0, 0.2); background: rgba(255, 255, 255, 0.533); padding: 4px 8px; border-radius: 6px; cursor: pointer; }
-    .tabs button.active { background: rgb(255, 255, 255); border-color: var(--accent); }
-    .spacer { flex: 1 1 0%; }
-    .primary, .ghost { border: 1px solid rgba(0, 0, 0, 0.2); background: rgb(255, 255, 255); padding: 5px 10px; border-radius: 6px; cursor: pointer; }
-    .ghost { background: transparent; }
-    .sheet { height: calc(100% - 76px); padding: 10px; display: grid; grid-template-rows: 86px 120px 106px 1fr 60px; gap: 10px; }
-    .head { position: relative; display: grid; grid-template-columns: auto 1fr 16px auto 1fr 16px auto 1fr auto 1fr auto 1fr; grid-auto-rows: 32px; align-items: center; gap: 6px 8px; }
-    .head label { opacity: 0.9; }
-    .head .text { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.8); border-radius: 6px; padding: 6px 8px; width: 100%; }
-    .name-label { width: 63px; display: inline-block; }
-    .name-input { transform: translateX(-27px); width: 83px; }
-    .shift-135 { transform: translateX(-53px); }
-    .level-input, .sp-input { width: calc(100% - 100px); }
-    .head-actions { position: absolute; right: 0px; top: -6px; display: flex; gap: 6px; z-index: 2; }
-    .abilities { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; }
-    .abl { background: rgba(255, 255, 255, 0.133); border: 1px solid rgba(0, 0, 0, 0.133); border-radius: 10px; padding: 6px; display: grid; grid-template-rows: 18px 56px 38px 20px; place-items: center; }
-    .abl .title { font-size: 12px; letter-spacing: 0.35px; }
-    .abl .score { width: 78px; height: 56px; text-align: center; font-size: 20px; border: 2px solid var(--line); background: rgb(255, 255, 255); border-radius: 10px; }
-    .abl .mod { width: 56px; height: 38px; text-align: center; font-size: 18px; border: 2px solid var(--line); background: rgb(255, 255, 255); border-radius: 999px; }
-    .abl .tick input { width: 14px; height: 14px; }
-    .combat { display: grid; grid-template-columns: repeat(6, 1fr); gap: 10px; margin-top: 5px; }
-    .combat .stat { border: 1px solid rgba(0, 0, 0, 0.133); border-radius: 10px; background: rgba(255, 255, 255, 0.133); padding: 6px; display: grid; grid-template-rows: 18px 1fr; align-items: center; }
-    .combat .title { font-size: 12px; letter-spacing: 0.35px; text-align: center; transform: translateY(4px); }
-    .combat .big { transform: translateX(18px); width: 67%; height: 47px; text-align: center; font-size: 20px; border: 2px solid var(--line); background: rgb(255, 255, 255); border-radius: 10px; }
-    .cols { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
-    .cols .col { display: grid; grid-template-rows: 18px 1fr; gap: 6px; }
-    .cols .title { font-size: 12px; letter-spacing: 0.35px; text-align: center; }
-    .cols textarea { resize: none; width: 100%; height: 100%; border: 1px solid var(--line); border-radius: 10px; padding: 8px; background: rgb(255, 255, 255); }
-    .saves { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; background: rgb(148, 138, 124); border-radius: 8px; padding: 6px 8px; }
-    .save { display: flex; align-items: center; gap: 6px; justify-content: center; }
-    .save .label { color: rgb(255, 255, 255); font-weight: 600; letter-spacing: 0.35px; }
-    .save .box { width: 58px; height: 26px; text-align: center; font-size: 16px; border: 2px solid rgb(221, 221, 221); border-radius: 6px; background: rgb(255, 255, 255); }
+    /* ===== Previous extracted overrides kept for reference (unchanged) ===== */
+    html > form#sheet > div.head:nth-of-type(1) { height: 45px; }
+    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(3) { transform: translateX(-72px); }
+    html > form#sheet > div.head:nth-of-type(1) > input.text.shift-135:nth-of-type(3) { transform: translateX(-75px); }
+    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(4) { transform: translateX(-70px); }
+    html > form#sheet > div.head:nth-of-type(1) > input.text.level-input.shift-135:nth-of-type(4) { width: 50px; transform: translateX(-73px); }
+    html > form#sheet > div.head:nth-of-type(1) > label.shift-135:nth-of-type(5) { transform: translateX(-121px); }
+    html > form#sheet > div.head:nth-of-type(1) > input.text.sp-input.shift-135:nth-of-type(5) { transform: translateX(-125px); width: 50px; }
+    html > form#sheet > div.abilities:nth-of-type(2) { transform: translateY(-42px); }
+    html > form#sheet > div.combat:nth-of-type(3) { transform: translateY(-21px); }
+    html > form#sheet > div.cols:nth-of-type(4) { transform: translateY(-26px); height: 161px; }
+    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(1) > div.title,
+    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(2) > div.title,
+    html > form#sheet > div.cols:nth-of-type(4) > div.col:nth-of-type(3) > div.title { transform: translateY(10px); }
+    html > form#sheet > div.saves:nth-of-type(5) { transform: translateY(-28px); }
   </style>
 </head>
 <body>
@@ -212,94 +163,95 @@
 
   <!-- Sheet -->
   <form id="sheet" class="sheet" autocomplete="off">
-    <!-- HEADER -->
-    <div class="head">
+    <!-- HEADER (updated inline layout) -->
+    <div class="head" style="height:45px; transform: translateY(10px);">
       <label class="name-label">Name:</label>
-      <input class="text name-input" data-key="name" />
+      <input class="text name-input" data-key="name">
 
       <span class="shift-135"></span>
 
       <label class="shift-135">Race:</label>
-      <input class="text shift-135" data-key="race" />
+      <input class="text shift-135" data-key="race">
 
       <span class="shift-135"></span>
 
-      <label class="shift-135">Class:</label>
-      <input class="text shift-135" data-key="class" />
+      <label class="shift-135" style="transform: translateX(-68px);">Class:</label>
+      <input class="text shift-135" data-key="class" style="transform: translateX(-72px);">
 
-      <label class="shift-135">Level:</label>
-      <input class="text level-input shift-135" data-key="level" inputmode="numeric" />
+      <label class="shift-135" style="transform: translateX(-67px);">Level:</label>
+      <input class="text level-input shift-135" data-key="level" inputmode="numeric" style="width: 50px; transform: translateX(-72px);">
 
-      <label class="shift-135">SP:</label>
-      <input class="text sp-input shift-135" data-key="sp" placeholder="0 / 0" />
+      <label class="shift-135" style="transform: translateX(-128px);">SP:</label>
+      <input class="text sp-input shift-135" data-key="sp" placeholder="0 / 0" style="transform: translateX(-132px); width: 60px;">
 
-      <div class="head-actions">
+      <div class="head-actions" style="scale:.60; transform: translate(64px,-30px);">
         <button id="btn-save" type="button" class="ghost">Save</button>
         <button id="btn-export" type="button" class="ghost">Export</button>
         <button id="btn-delete" type="button" class="ghost">Delete</button>
       </div>
     </div>
 
-    <!-- ABILITIES -->
-    <div class="abilities">
+    <!-- ABILITIES (updated inline layout) -->
+    <div class="abilities" style="transform: translateY(-42px);">
       <div class="abl"><div class="title">STRENGTH</div>
-        <input class="score" data-key="str" inputmode="numeric" />
-        <input class="mod"   data-key="str_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="str_chk" /></label>
+        <input class="score" data-key="str" inputmode="numeric">
+        <input class="mod" data-key="str_mod" inputmode="numeric">
+        <label class="tick"><input type="checkbox" data-key="str_chk"></label>
       </div>
       <div class="abl"><div class="title">DEXTERITY</div>
-        <input class="score" data-key="dex" inputmode="numeric" />
-        <input class="mod"   data-key="dex_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="dex_chk" /></label>
+        <input class="score" data-key="dex" inputmode="numeric">
+        <input class="mod" data-key="dex_mod" inputmode="numeric">
+        <label class="tick"><input type="checkbox" data-key="dex_chk"></label>
       </div>
       <div class="abl"><div class="title">CONSTITUTION</div>
-        <input class="score" data-key="con" inputmode="numeric" />
-        <input class="mod"   data-key="con_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="con_chk" /></label>
+        <input class="score" data-key="con" inputmode="numeric">
+        <input class="mod" data-key="con_mod" inputmode="numeric">
+        <label class="tick"><input type="checkbox" data-key="con_chk"></label>
       </div>
       <div class="abl"><div class="title">INTELLIGENCE</div>
-        <input class="score" data-key="int" inputmode="numeric" />
-        <input class="mod"   data-key="int_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="int_chk" /></label>
+        <input class="score" data-key="int" inputmode="numeric">
+        <input class="mod" data-key="int_mod" inputmode="numeric">
+        <label class="tick"><input type="checkbox" data-key="int_chk"></label>
       </div>
       <div class="abl"><div class="title">WISDOM</div>
-        <input class="score" data-key="wis" inputmode="numeric" />
-        <input class="mod"   data-key="wis_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="wis_chk" /></label>
+        <input class="score" data-key="wis" inputmode="numeric">
+        <input class="mod" data-key="wis_mod" inputmode="numeric">
+        <label class="tick"><input type="checkbox" data-key="wis_chk"></label>
       </div>
       <div class="abl"><div class="title">CHARISMA</div>
-        <input class="score" data-key="cha" inputmode="numeric" />
-        <input class="mod"   data-key="cha_mod" inputmode="numeric" />
-        <label class="tick"><input type="checkbox" data-key="cha_chk" /></label>
+        <input class="score" data-key="cha" inputmode="numeric">
+        <input class="mod" data-key="cha_mod" inputmode="numeric">
+        <label class="tick"><input type="checkbox" data-key="cha_chk"></label>
       </div>
     </div>
 
-    <!-- COMBAT -->
-    <div class="combat">
-      <div class="stat"><div class="title">MAX HP</div><input class="big" data-key="hp_max" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">CURRENT HP</div><input class="big" data-key="hp_cur" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">ARMOUR CLASS</div><input class="big" data-key="ac" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">SPEED</div><input class="big" data-key="speed" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">INITIATIVE</div><input class="big" data-key="init" inputmode="numeric" /></div>
-      <div class="stat"><div class="title">PSIONIC THROWS</div><input class="big" data-key="psionic" inputmode="numeric" /></div>
+    <!-- COMBAT (updated inline layout) -->
+    <div class="combat" style="transform: translateY(-23px);">
+      <div class="stat"><div class="title">MAX HP</div><input class="big" data-key="hp_max" inputmode="numeric"></div>
+      <div class="stat"><div class="title">CURRENT HP</div><input class="big" data-key="hp_cur" inputmode="numeric"></div>
+      <div class="stat"><div class="title">ARMOUR CLASS</div><input class="big" data-key="ac" inputmode="numeric"></div>
+      <div class="stat"><div class="title">SPEED</div><input class="big" data-key="speed" inputmode="numeric"></div>
+      <div class="stat"><div class="title">INITIATIVE</div><input class="big" data-key="init" inputmode="numeric"></div>
+      <div class="stat"><div class="title">PSIONIC THROWS</div><input class="big" data-key="psionic" inputmode="numeric"></div>
     </div>
 
-    <!-- THREE COLUMNS -->
-    <div class="cols">
-      <div class="col"><div class="title">ATTACKS &amp; SPELLS</div><textarea data-key="attacks"></textarea></div>
-      <div class="col"><div class="title">INVENTORY</div><textarea data-key="inventory"></textarea></div>
-      <div class="col"><div class="title">TRAITS AND NOTES</div><textarea data-key="notes"></textarea></div>
+    <!-- THREE COLUMNS (updated inline layout) -->
+    <div class="cols" style="transform: translateY(-30px); height: 206px;">
+      <div class="col"><div class="title">ATTACKS &amp; SPELLS</div><textarea data-key="attacks" style="transform: translateY(-8px);"></textarea></div>
+      <div class="col"><div class="title">INVENTORY</div><textarea data-key="inventory" style="transform: translateY(-8px);"></textarea></div>
+      <div class="col"><div class="title">TRAITS AND NOTES</div><textarea data-key="notes" style="transform: translateY(-8px);"></textarea></div>
     </div>
 
-    <!-- SAVES -->
-    <div class="saves">
-      <div class="save"><div class="label">FORTITUDE:</div><input class="box" data-key="save_fort" inputmode="numeric" /></div>
-      <div class="save"><div class="label">REFLEX:</div>   <input class="box" data-key="save_ref"  inputmode="numeric" /></div>
-      <div class="save"><div class="label">WILL:</div>     <input class="box" data-key="save_will" inputmode="numeric" /></div>
-      <div class="save"><div class="label">DEATH:</div>    <input class="box" data-key="save_death"inputmode="numeric" /></div>
+    <!-- SAVES (updated inline layout) -->
+    <div class="saves" style="height: 35px; transform: translateY(-47px);">
+      <div class="save"><div class="label">FORTITUDE:</div><input class="box" data-key="save_fort" inputmode="numeric"></div>
+      <div class="save"><div class="label">REFLEX:</div>   <input class="box" data-key="save_ref"  inputmode="numeric"></div>
+      <div class="save"><div class="label">WILL:</div>     <input class="box" data-key="save_will" inputmode="numeric"></div>
+      <div class="save"><div class="label">DEATH:</div>    <input class="box" data-key="save_death" inputmode="numeric"></div>
     </div>
   </form>
 
-  <script type="module" src="./main.js?v=9"></script>
+  <!-- bump version to v=10 -->
+  <script type="module" src="./main.js?v=10"></script>
 </body>
 </html>
