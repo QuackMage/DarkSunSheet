@@ -166,12 +166,16 @@
     <!-- HEADER (updated inline layout) -->
     <div class="head" style="height:45px; transform: translateY(10px);">
       <label class="name-label">Name:</label>
-      <input class="text name-input" data-key="name">
+      <input class="text name-input" data-key="name" disabled="" style="transform: translateX(-27px);">
 
       <span class="shift-135"></span>
 
-      <label class="shift-135">Race:</label>
-      <input class="text shift-135" data-key="race">
+      <label class="shift-135" style="
+    transform: translateX(-48px);
+">Race:</label>
+      <input class="text shift-135" data-key="race" disabled="" style="
+    transform: translateX(-52px);
+">
 
       <span class="shift-135"></span>
 
@@ -252,6 +256,6 @@
   </form>
 
   <!-- bump version to v=10 -->
-  <script type="module" src="./main.js?v=10"></script>
+  <script type="module" src="./main.js?v=11"></script>
 </body>
 </html>
