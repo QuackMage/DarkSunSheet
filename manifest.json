@@ -7,7 +7,7 @@
     "title": "Dark Sun Sheet",
     "icon": "/icon.png",
     "popover": "https://rawcdn.githack.com/QuackMage/DarkSunSheet/86854ed23ed05b33a46d3e421834418231c25ea2/index.html",
-    "width": 900,
+    "width": 600,
     "height": 640
   }
 }
